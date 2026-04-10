@@ -1,0 +1,9 @@
+services:
+  crypto-tax:
+    build: .
+    ports:
+      - "3001:3000"
+    volumes:
+      # Persiste le dossier data local à l'intérieur du conteneur
+      - ./data:/app/data
+    restart: unless-stopped

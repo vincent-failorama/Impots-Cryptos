@@ -1,0 +1,39 @@
+import { Transaction } from "../types";
+import { splitCsvLine, normalizeHeaders, buildRow, parseDate } from "./helpers";
+
+export function parseGateCsv(csv: string): Transaction[] {
+  const rows = csv.trim().split(/\r?\n/).filter(Boolean);
+  if (rows.length <= 1) return [];
+
+  const rawHeaders = splitCsvLine(rows[0]);
+  const headers = normalizeHeaders(rawHeaders);
+
+  return rows.slice(1).flatMap((line, index) => {
+    const values = splitCsvLine(line);
+    const row = buildRow(headers, values);
+
+    const pair = (row["pair"] || row["symbol"] || "").toUpperCase();
+    const [base] = pair.match(/^[A-Z0-9]+/) || ["UNKNOWN"];
+    const side = (row["type"] || row["side"] || "").toLowerCase();
+
+    const date = parseDate(row["createtime"] || row["date"] || "");
+    if (!date) return [];
+
+    const qty = Number(row["amount"] || row["vol"] || "0") || 0;
+    const fiatAmount = Number(row["total"] || row["cost"] || "0") || 0;
+    const price = Number(row["price"] || "0") || (qty ? fiatAmount / qty : 0);
+
+    const tx: Transaction = {
+      id: row["ordernumber"] || row["order number"] || `gate-${index}-${date.valueOf()}`,
+      date,
+      platform: "gate",
+      asset: base,
+      qty,
+      priceEur: price,
+      fiatAmount,
+      type: side === "buy" ? "buy" : side === "sell" ? "sell" : "trade",
+      isTaxable: side === "sell" || side === "trade",
+    };
+    return [tx];
+  });
+}
