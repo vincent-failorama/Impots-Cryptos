@@ -58,12 +58,13 @@ docker compose up -d --build
 git clone git@github.com:vincent-failorama/Impots-Cryptos.git
 cd Impots-Cryptos
 npm install
+git update-index --skip-worktree data/transactions.json
 npm run dev
 ```
 
 Ouvrir [http://localhost:3000](http://localhost:3000).
 
-Les transactions sont stockées dans `data/transactions.json` (créé automatiquement).
+> `git update-index --skip-worktree data/transactions.json` empêche Git de tracker vos transactions personnelles. À exécuter une seule fois après le clone.
 
 ---
 
