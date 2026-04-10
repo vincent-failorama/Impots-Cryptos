@@ -23,8 +23,7 @@
 # electron build output
 /dist
 
-# données personnelles
-/data/transactions.json
+# données personnelles — ne pas commiter (voir git update-index --skip-worktree)
 
 # misc
 .DS_Store
