@@ -4,6 +4,7 @@ import React, { useState, ChangeEvent } from 'react';
 import Link from 'next/link';
 import type { Transaction } from '@/lib/types';
 import { parseCsv } from '@/lib/parsers';
+import { readCsvHeaders } from '@/lib/parsers/helpers';
 import { API_PLATFORMS, PLATFORMS, getPlatform, type PlatformId } from '@/lib/platforms';
 import { API_QUOTE_ASSETS } from '@/lib/quote-currencies';
 import {
@@ -26,19 +27,28 @@ function CsvImport() {
   const [platform, setPlatform] = useState<PlatformId>(PLATFORMS[0].id);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [detectedColumns, setDetectedColumns] = useState<string[]>([]);
 
   const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setLoading(true);
     setMessage('');
+    setDetectedColumns([]);
     try {
       const text = await file.text();
       const transactions = parseCsv(platform, text);
       if (transactions.length === 0) {
-        setMessage('Aucune transaction trouvée. Vérifiez la plateforme sélectionnée et le format du fichier.');
+        // Diagnostic : la cause la plus fréquente est un libellé de colonne que
+        // nos alias ne connaissent pas. On montre ce que contient le fichier
+        // plutôt que de laisser l'utilisateur deviner.
+        setDetectedColumns(readCsvHeaders(text));
+        setMessage(
+          `Aucune transaction trouvée dans ${file.name}. Vérifiez que la plateforme sélectionnée correspond bien au fichier.`
+        );
         return;
       }
+      setDetectedColumns([]);
       const { saved, duplicates } = await saveTransactions(transactions);
       const dupNote = duplicates > 0 ? ` (${duplicates} doublon(s) ignoré(s))` : '';
       setMessage(`✓ ${saved} transaction(s) importée(s)${dupNote} depuis ${file.name}.`);
@@ -89,6 +99,24 @@ function CsvImport() {
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
         {loading ? 'Importation en cours…' : (message || 'Choisissez un fichier CSV pour importer.')}
       </div>
+
+      {detectedColumns.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Colonnes détectées dans votre fichier</p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {detectedColumns.map((col) => (
+              <li key={col} className="rounded-lg bg-white px-2 py-1 font-mono text-xs text-amber-800 ring-1 ring-amber-200">
+                {col}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 leading-relaxed text-amber-800">
+            Si ces colonnes correspondent bien à des ordres d&apos;achat et de vente, le format
+            de {getPlatform(platform).label} a probablement changé. Communiquez cette liste
+            pour que les libellés attendus soient mis à jour.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -182,27 +182,45 @@ export default function AidePage() {
 
         {/* Exports par plateforme */}
         <section id="exports" className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200">
-          <h2 className="text-xl font-semibold text-slate-900 mb-6">Comment exporter depuis ma plateforme</h2>
-          <div className="space-y-8">
+          <h2 className="text-xl font-semibold text-slate-900">Comment exporter depuis ma plateforme</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            {platformExports.length} plateformes prises en charge — dépliez la vôtre.
+          </p>
+
+          {/* `details` natif : repliable sans JavaScript, accessible au clavier
+              et ouvrable par la recherche du navigateur (Ctrl+F). Avec douze
+              guides, tout afficher d'un bloc rendait la page illisible. */}
+          <div className="mt-6 divide-y divide-slate-100 border-t border-slate-100">
             {platformExports.map((platform) => (
-              <div key={platform.name}>
-                <h3 className="font-semibold text-slate-900 mb-3">{platform.name}</h3>
-                <ol className="space-y-2">
-                  {platform.steps.map((step, i) => (
-                    <li key={i} className="flex gap-3 text-sm text-slate-600">
-                      <span className="shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-medium">
-                        {i + 1}
-                      </span>
-                      {step}
-                    </li>
-                  ))}
-                </ol>
-                {platform.note && (
-                  <p className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2 text-xs text-amber-800">
-                    {platform.note}
-                  </p>
-                )}
-              </div>
+              <details key={platform.name} className="group py-1">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-xl px-3 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50">
+                  {platform.name}
+                  <span
+                    aria-hidden="true"
+                    className="text-slate-400 transition-transform group-open:rotate-90"
+                  >
+                    ›
+                  </span>
+                </summary>
+
+                <div className="px-3 pb-4 pt-1">
+                  <ol className="space-y-2">
+                    {platform.steps.map((step, i) => (
+                      <li key={i} className="flex gap-3 text-sm text-slate-600">
+                        <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-medium text-slate-500">
+                          {i + 1}
+                        </span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                  {platform.note && (
+                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+                      {platform.note}
+                    </p>
+                  )}
+                </div>
+              </details>
             ))}
           </div>
         </section>

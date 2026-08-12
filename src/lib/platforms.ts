@@ -125,6 +125,28 @@ const PLATFORMS_RAW = [
     api: null,
   },
   {
+    id: "bitpanda",
+    label: "Bitpanda",
+    csvExportSteps: [
+      "Connectez-vous sur bitpanda.com",
+      "Profil → Historique des transactions",
+      "Cliquez sur « Exporter » → format CSV",
+      "Choisissez « Toutes les transactions » et la période souhaitée",
+    ],
+    csvNote:
+      "L'export Bitpanda comporte une colonne « Asset » plutôt qu'une paire : le montant en euros est lu depuis « Amount Fiat ».",
+    csvColumns: {
+      date: ["timestamp", "date", "datum", "created at", "time"],
+      pair: ["asset", "cryptocoin", "symbol", "pair", "actif"],
+      side: ["transaction type", "type", "in/out", "direction"],
+      qty: ["amount asset", "amount cryptocoin", "quantity", "amount", "quantité"],
+      total: ["amount fiat", "fiat amount", "value", "total", "montant"],
+      price: ["asset market price", "price", "prix", "cours"],
+      id: ["transaction id", "id", "order id"],
+    },
+    api: null,
+  },
+  {
     id: "coinbase",
     label: "Coinbase",
     csvExportSteps: [
@@ -141,6 +163,50 @@ const PLATFORMS_RAW = [
       keyCreationPath: "Paramètres → API → Nouvelle clé API (Legacy)",
       requiredPermission: 'uniquement la permission « brokerage:orders:read » (ou « wallet:trades:read »)',
     },
+  },
+  {
+    id: "coinhouse",
+    label: "Coinhouse",
+    csvExportSteps: [
+      "Connectez-vous sur coinhouse.com",
+      "Mon compte → Historique / Mes transactions",
+      "Cliquez sur « Exporter » ou « Télécharger l'historique »",
+      "Choisissez le format CSV et la période souhaitée",
+    ],
+    csvNote:
+      "Coinhouse est un PSAN enregistré en France : ses exports utilisent des libellés de colonnes français.",
+    csvColumns: {
+      date: ["date", "date de transaction", "date d'opération", "timestamp", "horodatage"],
+      pair: ["devise", "actif", "crypto", "currency", "asset", "paire", "pair", "symbole"],
+      side: ["type", "type d'opération", "opération", "sens", "operation", "side"],
+      qty: ["quantité", "quantite", "montant crypto", "nombre", "quantity", "amount"],
+      total: ["montant", "montant eur", "montant total", "total", "contrepartie", "value"],
+      price: ["prix", "prix unitaire", "cours", "price"],
+      id: ["référence", "reference", "id", "identifiant", "numéro de transaction"],
+    },
+    api: null,
+  },
+  {
+    id: "cryptocom",
+    label: "Crypto.com",
+    csvExportSteps: [
+      "Application Crypto.com : Comptes → Historique des transactions → icône d'export",
+      "Crypto.com Exchange : Wallet → Transaction History → Export",
+      "Sélectionnez la période puis téléchargez le CSV",
+      "Importez ici l'export « Trade History » (ordres d'achat et de vente)",
+    ],
+    csvNote:
+      "Deux exports coexistent. Celui de l'Exchange (une ligne par ordre) est le mieux exploité ; celui de l'application mélange de nombreux types d'opérations.",
+    csvColumns: {
+      date: ["timestamp (utc)", "trade time", "create time", "date", "time", "timestamp"],
+      pair: ["pair", "instrument", "instrument_name", "market", "currency", "symbol"],
+      side: ["side", "trade side", "type", "transaction kind", "transaction description"],
+      qty: ["quantity", "traded quantity", "size", "amount", "volume"],
+      total: ["total", "traded value", "value", "native amount", "cost", "fees value"],
+      price: ["price", "trade price", "avg price", "native amount per unit"],
+      id: ["trade id", "order id", "transaction hash", "id"],
+    },
+    api: null,
   },
   {
     id: "gate",
@@ -211,6 +277,71 @@ const PLATFORMS_RAW = [
       requiredPermission: 'uniquement « General »',
       requiresPassphrase: true,
     },
+  },
+  {
+    id: "ledgerlive",
+    label: "Ledger Live",
+    csvExportSteps: [
+      "Ouvrez Ledger Live sur votre ordinateur",
+      "Comptes → menu ⋯ en haut à droite → « Exporter les opérations »",
+      "Sélectionnez les comptes à inclure puis enregistrez le fichier CSV",
+    ],
+    csvNote:
+      "Ledger Live exporte des mouvements de portefeuille (entrées et sorties), pas des ordres d'achat ou de vente. Ces lignes sont importées comme non imposables : complétez-les avec l'export de la plateforme où l'achat a eu lieu.",
+    csvColumns: {
+      date: ["operation date", "date", "date de l'opération"],
+      pair: ["currency ticker", "currency", "ticker", "asset"],
+      side: ["operation type", "type", "type d'opération"],
+      qty: ["operation amount", "amount", "montant"],
+      total: ["countervalue at operation date", "countervalue", "contre-valeur", "value"],
+      price: ["price", "prix", "cours"],
+      id: ["operation hash", "hash", "id"],
+    },
+    api: null,
+  },
+  {
+    id: "revolut",
+    label: "Revolut",
+    csvExportSteps: [
+      "Application Revolut : onglet Crypto → sélectionnez un actif",
+      "Menu ⋯ → « Relevé » (Statement)",
+      "Choisissez le format Excel/CSV et la période",
+      "Répétez l'opération pour chaque crypto détenue",
+    ],
+    csvNote:
+      "Revolut génère un relevé par crypto-actif : importez chaque fichier séparément.",
+    csvColumns: {
+      date: ["date", "completed date", "started date", "date completed", "time"],
+      pair: ["symbol", "product", "currency", "ticker", "description"],
+      side: ["type", "transaction type", "side", "direction"],
+      qty: ["quantity", "amount", "units", "quantité"],
+      total: ["value", "fiat amount", "total amount", "amount (eur)", "total"],
+      price: ["price", "price per unit", "prix"],
+      id: ["id", "reference", "transaction id"],
+    },
+    api: null,
+  },
+  {
+    id: "swissborg",
+    label: "Swissborg",
+    csvExportSteps: [
+      "Application Swissborg : Profil → Historique / Relevés",
+      "Sélectionnez « Exporter mes transactions »",
+      "Choisissez la période et le format CSV",
+      "Le fichier est envoyé par e-mail ou téléchargeable directement",
+    ],
+    csvNote:
+      "L'export Swissborg mêle achats, ventes et récompenses Earn : seuls les achats et ventes sont interprétés comme des cessions.",
+    csvColumns: {
+      date: ["local time", "time (utc)", "timestamp", "date", "time"],
+      pair: ["currency", "asset", "ticker", "symbol", "pair"],
+      side: ["type", "transaction type", "operation", "side"],
+      qty: ["net amount", "gross amount", "amount", "quantity", "quantité"],
+      total: ["value (eur)", "fiat value", "eur value", "value", "total", "montant"],
+      price: ["price", "unit price", "rate", "prix"],
+      id: ["id", "transaction id", "reference"],
+    },
+    api: null,
   },
 ] as const satisfies readonly PlatformDefinitionBase[];
 

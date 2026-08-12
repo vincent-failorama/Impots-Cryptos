@@ -16,7 +16,7 @@ const QUICK_LINKS = [
 // Les plateformes citées sont dérivées du registre : la page reste juste
 // lorsqu'on en ajoute ou en retire une.
 const FEATURES_LIST = [
-  `Import CSV depuis ${PLATFORMS.map((p) => p.label).join(', ')}`,
+  `Import CSV depuis ${PLATFORMS.length} plateformes : ${PLATFORMS.map((p) => p.label).join(', ')}`,
   `Connexion API en lecture seule (${API_PLATFORMS.map((p) => p.label).join(', ')}) pour récupérer l'historique complet`,
   "Plus-values calculées selon la méthode proportionnelle de l'article 150 VH bis",
   "Prix historiques CoinGecko, mis en cache localement entre deux sessions",

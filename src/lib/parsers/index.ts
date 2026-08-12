@@ -32,8 +32,14 @@ export const CSV_PARSERS: Record<PlatformId, CsvParser> = {
   // Formats « une ligne = un ordre » : parser générique piloté par le registre.
   binance: fromRegistry("binance"),
   bitget: fromRegistry("bitget"),
+  bitpanda: fromRegistry("bitpanda"),
+  coinhouse: fromRegistry("coinhouse"),
+  cryptocom: fromRegistry("cryptocom"),
   gate: fromRegistry("gate"),
   kraken: fromRegistry("kraken"),
+  ledgerlive: fromRegistry("ledgerlive"),
+  revolut: fromRegistry("revolut"),
+  swissborg: fromRegistry("swissborg"),
   // Formats à logique propre : parser dédié (voir chaque module).
   coinbase: parseCoinbaseCsv,
   kucoin: parseKucoinCsv,

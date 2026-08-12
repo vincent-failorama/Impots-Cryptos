@@ -21,14 +21,30 @@ Plus-value = Prix de cession − (Prix de revient global × Prix de cession / Va
 
 ## Plateformes supportées
 
-| Plateforme | Import CSV | Import API |
-|------------|:----------:|:----------:|
-| Binance    | ✓          | ✓          |
-| Kraken     | ✓          | ✓          |
-| Coinbase   | ✓          | ✓          |
-| KuCoin     | ✓          | ✓          |
-| Bitget     | ✓          |            |
-| Gate.io    | ✓          | ✓          |
+| Plateforme   | Import CSV | Import API | Format CSV vérifié |
+|--------------|:----------:|:----------:|:------------------:|
+| Binance      | ✓          | ✓          | ✓                  |
+| Kraken       | ✓          | ✓          | ✓                  |
+| Coinbase     | ✓          | ✓          | ✓                  |
+| KuCoin       | ✓          | ✓          | ✓                  |
+| Gate.io      | ✓          | ✓          | ✓                  |
+| Bitget       | ✓          |            | ✓                  |
+| Bitpanda     | ✓          |            |                    |
+| Coinhouse    | ✓          |            |                    |
+| Crypto.com   | ✓          |            |                    |
+| Ledger Live  | ✓          |            |                    |
+| Revolut      | ✓          |            |                    |
+| Swissborg    | ✓          |            |                    |
+
+> **Colonne « Format CSV vérifié »** : les libellés de colonnes attendus proviennent
+> de la documentation publique de chaque plateforme, mais n'ont pas tous été
+> confrontés à un export réel. Si un import ne remonte aucune transaction,
+> l'application affiche les colonnes trouvées dans votre fichier — il suffit
+> alors d'ajouter l'alias manquant dans `csvColumns` (`src/lib/platforms.ts`).
+
+> **Ledger Live** exporte des mouvements de portefeuille, pas des ordres : ces
+> lignes sont importées comme non imposables. Complétez-les avec l'export de la
+> plateforme sur laquelle l'achat a réellement eu lieu.
 
 ---
 

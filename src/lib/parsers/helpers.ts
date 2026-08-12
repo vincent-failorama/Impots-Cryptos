@@ -36,6 +36,19 @@ export function normalizeHeaders(headers: string[]): string[] {
 }
 
 /**
+ * Libellés de colonnes présents dans un CSV, tels qu'écrits par la plateforme.
+ *
+ * Sert au diagnostic : quand un import ne produit aucune transaction, la cause
+ * la plus fréquente est un libellé de colonne inconnu de nos alias. Les afficher
+ * transforme un « 0 transaction trouvée » opaque en information exploitable.
+ */
+export function readCsvHeaders(csv: string): string[] {
+  const firstLine = csv.trim().split(/\r?\n/).find((l) => l.trim() !== "");
+  if (!firstLine) return [];
+  return splitCsvLine(firstLine).filter((h) => h.trim() !== "");
+}
+
+/**
  * Construit un objet row depuis des headers normalisés.
  * La clé est toujours en lowercase, les valeurs restent telles quelles.
  *

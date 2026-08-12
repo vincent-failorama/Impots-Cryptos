@@ -21,6 +21,41 @@ import {
  * Les formats portant une logique propre (Coinbase et ses catégories de
  * revenus, KuCoin et ses variantes) gardent un parser dédié.
  */
+/**
+ * Vocabulaires reconnus pour le sens d'une opération.
+ *
+ * Les plateformes européennes et françaises n'écrivent pas « buy » / « sell » :
+ * on rencontre « Achat », « Vente », « Kauf », « Compra »…
+ *
+ * Volontairement restreint aux verbes sans ambiguïté. Un libellé non reconnu
+ * (« IN », « OUT », « Transfer », « Reward »…) devient un `trade` non imposable
+ * plutôt que d'être forcé en achat ou en vente : un virement entrant n'est pas
+ * une acquisition à titre onéreux, et le compter comme tel gonflerait le prix
+ * de revient global. Mieux vaut une ligne neutre qu'une ligne fausse.
+ */
+const BUY_TERMS = new Set([
+  "buy", "bought", "purchase", "achat", "acheter", "acheté",
+  "kauf", "compra", "acquisto", "koop",
+]);
+
+const SELL_TERMS = new Set([
+  "sell", "sold", "sale", "vente", "vendre", "vendu",
+  "verkauf", "venta", "vendita", "verkoop",
+]);
+
+export function normalizeSide(raw: string): "buy" | "sell" | "trade" {
+  // On isole le premier mot : « Advanced Trade Buy » ou « Achat au comptant »
+  const cleaned = raw.trim().toLowerCase();
+  if (BUY_TERMS.has(cleaned)) return "buy";
+  if (SELL_TERMS.has(cleaned)) return "sell";
+
+  for (const word of cleaned.split(/[\s_-]+/)) {
+    if (BUY_TERMS.has(word)) return "buy";
+    if (SELL_TERMS.has(word)) return "sell";
+  }
+  return "trade";
+}
+
 export function createCsvParser(
   platform: PlatformId,
   columns: CsvColumnMap
@@ -40,15 +75,13 @@ export function createCsvParser(
       if (!date) return [];
 
       const asset = extractBaseAsset(pick(row, ...columns.pair)) || "UNKNOWN";
-      const side = pick(row, ...columns.side).toLowerCase();
 
       const qty = pickNumber(row, ...columns.qty);
       const fiatAmount = pickNumber(row, ...columns.total);
       const priceEur =
         pickNumber(row, ...columns.price) || (qty ? fiatAmount / qty : 0);
 
-      const type: Transaction["type"] =
-        side === "buy" ? "buy" : side === "sell" ? "sell" : "trade";
+      const type: Transaction["type"] = normalizeSide(pick(row, ...columns.side));
 
       const tx: Transaction = {
         id: pick(row, ...columns.id) || `${platform}-${index}-${date.valueOf()}`,
