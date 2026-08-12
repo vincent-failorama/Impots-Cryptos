@@ -116,8 +116,18 @@ export function warmAssetRegistry(cgApiKey?: string): Promise<void> {
   return registryWarming;
 }
 
-/** Nombre d'actifs résolvables (table statique + registre dynamique). */
+/**
+ * Nombre d'actifs résolvables (table statique + registre dynamique).
+ *
+ * Hydrate le registre depuis le cache local si besoin — sans quoi la fonction
+ * renverrait 21 avant le premier calcul, alors que des centaines d'actifs sont
+ * déjà connus d'une session précédente. Aucun appel réseau.
+ */
 export function getKnownAssetCount(): number {
+  if (!registryLoaded && Object.keys(dynamicRegistry).length === 0) {
+    const cached = loadRegistryFromStorage();
+    if (cached?.map) dynamicRegistry = cached.map;
+  }
   return new Set([...Object.keys(CG_ASSET_MAP), ...Object.keys(dynamicRegistry)]).size;
 }
 
@@ -235,17 +245,3 @@ export async function fetchHistoricalPriceEur(
   return null; // toutes les tentatives épuisées
 }
 
-export async function fetchCurrentPriceEur(asset: string): Promise<number | null> {
-  const id = getCoinGeckoId(asset);
-  if (!id) return null;
-
-  const response = await fetch(
-    `${COINGECKO_API}/simple/price?ids=${id}&vs_currencies=eur`,
-    { next: { revalidate: 300 } }
-  );
-
-  if (!response.ok) return null;
-
-  const data = await response.json();
-  return data?.[id]?.eur ?? null;
-}

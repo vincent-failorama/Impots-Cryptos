@@ -1,4 +1,3 @@
-import { Transaction, TransactionType, TransactionPlatform } from "../types";
 import { QUOTE_CURRENCIES_BY_LENGTH } from "../quote-currencies";
 
 export function splitCsvLine(line: string): string[] {
@@ -128,33 +127,6 @@ export function parseDate(raw: string): Date | null {
   const d = new Date(normalized);
   return isNaN(d.getTime()) ? null : d;
 }
-
-export function toTransaction(
-  platform: TransactionPlatform,
-  row: Record<string, string>,
-  defaults: Partial<Transaction> = {}
-): Transaction {
-  const date = parseDate(row.date || row["date(utc)"] || row.time || "") ?? new Date(0);
-  const qty = Number(row.qty ?? row.amount ?? row.vol ?? "0") || 0;
-  const fiatAmount = Number(row.fiatamount ?? row.total ?? row.cost ?? "0") || 0;
-  const priceEur = Number(row.priceeur ?? row.price ?? "0") || (qty ? fiatAmount / qty : 0);
-  return {
-    id: row.id || row["order id"] || row["order id"] || row.txid || `${platform}-${date.valueOf()}-${Math.random().toString(36).slice(2, 8)}`,
-    platform,
-    date,
-    asset: (row.asset || row.symbol || row.pair || "").toUpperCase(),
-    qty,
-    priceEur,
-    fiatAmount,
-    type: (row.type as TransactionType) || "other",
-    isTaxable: defaults.isTaxable ?? false,
-  };
-}
-
-export function normalizeAsset(symbol: string) {
-  return symbol.replace(/\s+/g, "").replace(/\//g, "").toUpperCase();
-}
-
 
 /**
  * Extrait l'actif de base d'une paire de trading.

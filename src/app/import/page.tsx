@@ -7,6 +7,7 @@ import { parseCsv } from '@/lib/parsers';
 import { readCsvHeaders } from '@/lib/parsers/helpers';
 import { API_PLATFORMS, PLATFORMS, getPlatform, type PlatformId } from '@/lib/platforms';
 import { API_QUOTE_ASSETS } from '@/lib/quote-currencies';
+import { clearPriceCache, getKnownAssetCount, getPriceCacheSize } from '@/lib/pricer';
 import {
   STORAGE_KEYS, brokerKeysStorageKey, readJson, readString, remove, writeJson, writeString,
 } from '@/lib/storage';
@@ -404,6 +405,66 @@ function CoingeckoKeySection() {
       </div>
       <p className="mt-2 text-xs text-slate-400">
         Stockée uniquement dans votre navigateur (localStorage). Jamais transmise à un tiers.
+      </p>
+
+      <PriceCachePanel />
+    </div>
+  );
+}
+
+// ── Cache des cours historiques ───────────────────────────────────────────────
+
+/**
+ * Un cours passé étant immuable, il n'est récupéré qu'une fois puis conservé.
+ * Ce panneau permet de le purger : utile si un cours a été récupéré alors que
+ * CoinGecko renvoyait une valeur incomplète, ou après l'ajout d'une clé API
+ * ayant débloqué des actifs auparavant introuvables.
+ */
+function PriceCachePanel() {
+  const [stats, setStats] = useState<{ prices: number; assets: number } | null>(null);
+  const [cleared, setCleared] = useState(false);
+
+  const refresh = React.useCallback(() => {
+    setStats({ prices: getPriceCacheSize(), assets: getKnownAssetCount() });
+  }, []);
+
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const handleClear = () => {
+    clearPriceCache();
+    setCleared(true);
+    refresh();
+    setTimeout(() => setCleared(false), 3000);
+  };
+
+  if (!stats) return null;
+
+  return (
+    <div className="mt-6 border-t border-slate-100 pt-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-600">
+          <span className="font-medium text-slate-900">Cache des cours</span>
+          <span className="mx-2 text-slate-300">·</span>
+          {stats.prices === 0
+            ? 'aucun cours mémorisé'
+            : `${stats.prices} cours mémorisé${stats.prices > 1 ? 's' : ''}`}
+          <span className="mx-2 text-slate-300">·</span>
+          {stats.assets} actifs reconnus
+        </div>
+        {stats.prices > 0 && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="text-xs text-slate-400 underline transition hover:text-red-500"
+          >
+            Vider le cache
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-slate-400">
+        {cleared
+          ? '✓ Cache vidé — les cours seront récupérés à nouveau au prochain calcul.'
+          : 'Les cours passés ne changent jamais : les conserver évite de longues attentes à chaque calcul.'}
       </p>
     </div>
   );

@@ -58,12 +58,6 @@ export type CessionResult = {
   portfolioValueCertain: boolean;
 };
 
-export function parseCsvNumber(value: string): number {
-  const normalized = value.replace(/\s+/g, "").replace(/,/g, ".");
-  const num = Number(normalized);
-  return Number.isFinite(num) ? num : 0;
-}
-
 function toDateStr(date: Date): string {
   const d = date.getDate().toString().padStart(2, "0");
   const m = (date.getMonth() + 1).toString().padStart(2, "0");
