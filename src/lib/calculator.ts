@@ -179,7 +179,8 @@ export async function calculateCessions(
     // Le staking, mining et airdrop sont des BNC à la réception, mais entrent
     // dans le prix de revient global pour les futures cessions (art. 150 VH bis).
     if (isBuy || tx.type === "staking" || tx.type === "mining" || tx.type === "airdrop") {
-      const cost = tx.fiatAmount > 0 ? tx.fiatAmount : tx.qty * tx.priceEur;
+      // Les frais d'acquisition font partie du prix de revient (art. 150 VH bis)
+      const cost = (tx.fiatAmount > 0 ? tx.fiatAmount : tx.qty * tx.priceEur) + (tx.feeEur ?? 0);
       globalCostBasis += cost;
       holdings.set(tx.asset, (holdings.get(tx.asset) ?? 0) + tx.qty);
       if (tx.priceEur > 0) lastKnownPrice.set(tx.asset, tx.priceEur);
@@ -187,7 +188,9 @@ export async function calculateCessions(
 
     // ── Cessions imposables ──────────────────────────────────────────────────
     if (tx.isTaxable && (isSell || isTrade)) {
-      const grossProceeds = tx.fiatAmount > 0 ? tx.fiatAmount : tx.qty * tx.priceEur;
+      // Le prix de cession s'entend net des frais supportés par le cédant
+      const rawProceeds = tx.fiatAmount > 0 ? tx.fiatAmount : tx.qty * tx.priceEur;
+      const grossProceeds = Math.max(0, rawProceeds - (tx.feeEur ?? 0));
       if (tx.priceEur > 0) lastKnownPrice.set(tx.asset, tx.priceEur);
 
       const dateStr = toDateStr(tx.date);

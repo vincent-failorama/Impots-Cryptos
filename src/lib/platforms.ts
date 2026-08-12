@@ -34,6 +34,10 @@ export type CsvColumnMap = {
   readonly price: readonly string[];
   /** Identifiant d'ordre, utilisé pour le dédoublonnage. */
   readonly id: readonly string[];
+  /** Montant des frais. Facultatif : tous les exports n'en fournissent pas. */
+  readonly fee?: readonly string[];
+  /** Devise des frais — ils ne sont retenus que s'ils sont en euros. */
+  readonly feeCurrency?: readonly string[];
 };
 
 export type PlatformApiConfig = {
@@ -94,6 +98,8 @@ const PLATFORMS_RAW = [
       total: ["total", "amount_total", "cost", "quote amount"],
       price: ["price", "avg price", "average price"],
       id: ["order id", "trade id", "orderno", "id"],
+      fee: ["fee", "commission", "trading fee"],
+      feeCurrency: ["fee coin", "commission asset", "fee currency"],
     },
     api: {
       securityNote:
@@ -120,6 +126,8 @@ const PLATFORMS_RAW = [
       total: ["total", "filled value", "cost", "turnover"],
       price: ["price", "avg price", "filled price"],
       id: ["order id", "orderid", "id"],
+      fee: ["fee", "fees", "trading fee"],
+      feeCurrency: ["fee coin", "fee currency"],
     },
     // Bitget ne propose pas encore d'import API dans cette application.
     api: null,
@@ -143,6 +151,8 @@ const PLATFORMS_RAW = [
       total: ["amount fiat", "fiat amount", "value", "total", "montant"],
       price: ["asset market price", "price", "prix", "cours"],
       id: ["transaction id", "id", "order id"],
+      fee: ["fee", "frais"],
+      feeCurrency: ["fee asset", "fee currency"],
     },
     api: null,
   },
@@ -183,6 +193,8 @@ const PLATFORMS_RAW = [
       total: ["montant", "montant eur", "montant total", "total", "contrepartie", "value"],
       price: ["prix", "prix unitaire", "cours", "price"],
       id: ["référence", "reference", "id", "identifiant", "numéro de transaction"],
+      fee: ["frais", "fee", "commission"],
+      feeCurrency: ["devise des frais", "fee currency"],
     },
     api: null,
   },
@@ -205,6 +217,8 @@ const PLATFORMS_RAW = [
       total: ["total", "traded value", "value", "native amount", "cost", "fees value"],
       price: ["price", "trade price", "avg price", "native amount per unit"],
       id: ["trade id", "order id", "transaction hash", "id"],
+      fee: ["fee", "fees", "trading fee"],
+      feeCurrency: ["fee currency", "fee instrument"],
     },
     api: null,
   },
@@ -225,6 +239,8 @@ const PLATFORMS_RAW = [
       total: ["total", "cost", "turnover", "value"],
       price: ["price", "avg price"],
       id: ["ordernumber", "order number", "order id", "id"],
+      fee: ["fee", "frais"],
+      feeCurrency: ["fee currency", "fee coin"],
     },
     api: {
       securityNote:
@@ -252,6 +268,8 @@ const PLATFORMS_RAW = [
       total: ["cost", "total", "value"],
       price: ["price", "avg price"],
       id: ["txid", "trade id", "ordertxid", "id"],
+      fee: ["fee", "fees"],
+      feeCurrency: ["fee currency"],
     },
     api: {
       securityNote:
@@ -296,6 +314,8 @@ const PLATFORMS_RAW = [
       total: ["countervalue at operation date", "countervalue", "contre-valeur", "value"],
       price: ["price", "prix", "cours"],
       id: ["operation hash", "hash", "id"],
+      fee: ["operation fees", "fees"],
+      feeCurrency: ["currency ticker"],
     },
     api: null,
   },
@@ -318,6 +338,8 @@ const PLATFORMS_RAW = [
       total: ["value", "fiat amount", "total amount", "amount (eur)", "total"],
       price: ["price", "price per unit", "prix"],
       id: ["id", "reference", "transaction id"],
+      fee: ["fees", "fee"],
+      feeCurrency: ["fee currency", "currency"],
     },
     api: null,
   },
@@ -340,6 +362,8 @@ const PLATFORMS_RAW = [
       total: ["value (eur)", "fiat value", "eur value", "value", "total", "montant"],
       price: ["price", "unit price", "rate", "prix"],
       id: ["id", "transaction id", "reference"],
+      fee: ["fee", "fees"],
+      feeCurrency: ["fee currency"],
     },
     api: null,
   },

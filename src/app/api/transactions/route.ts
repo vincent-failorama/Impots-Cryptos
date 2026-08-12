@@ -47,6 +47,55 @@ async function readTransactions(): Promise<Transaction[]> {
   }
 }
 
+/**
+ * Modifie une transaction existante, ou remplace l'intégralité du jeu de
+ * données lorsque le corps est un tableau (restauration d'une sauvegarde).
+ *
+ * L'application ne savait jusqu'ici qu'importer et supprimer : une ligne mal
+ * lue par un parser, une opération de gré à gré ou une plateforme non
+ * supportée laissaient l'utilisateur sans recours.
+ */
+export async function PUT(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
+  }
+
+  // ── Restauration complète ────────────────────────────────────────────────
+  if (Array.isArray(body)) {
+    const invalid = body.filter((tx) => !isValidTransaction(tx));
+    if (invalid.length > 0) {
+      return NextResponse.json(
+        { error: `${invalid.length} transaction(s) invalide(s) : restauration annulée` },
+        { status: 400 }
+      );
+    }
+    return withWriteLock(async () => {
+      await fs.writeFile(DATA_PATH, JSON.stringify(body, null, 2), "utf-8");
+      return NextResponse.json({ restored: body.length });
+    });
+  }
+
+  // ── Modification d'une transaction ───────────────────────────────────────
+  if (!isValidTransaction(body)) {
+    return NextResponse.json({ error: "Transaction invalide" }, { status: 400 });
+  }
+  const updated = body as Transaction;
+
+  return withWriteLock(async () => {
+    const existing = await readTransactions();
+    const index = existing.findIndex((tx) => tx.id === updated.id);
+    if (index === -1) {
+      return NextResponse.json({ error: "Transaction introuvable" }, { status: 404 });
+    }
+    existing[index] = updated;
+    await fs.writeFile(DATA_PATH, JSON.stringify(existing, null, 2), "utf-8");
+    return NextResponse.json({ updated: 1 });
+  });
+}
+
 export async function GET() {
   const transactions = await readTransactions();
   return NextResponse.json(transactions);

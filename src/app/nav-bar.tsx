@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 
 const NAV_LINKS = [
   { href: '/import', label: 'Importer' },
+  { href: '/donnees', label: 'Mes données' },
   { href: '/transactions', label: 'Cessions' },
   { href: '/cerfa', label: 'Cerfa' },
   { href: '/aide', label: 'Aide' },

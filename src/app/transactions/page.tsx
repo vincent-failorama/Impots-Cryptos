@@ -28,6 +28,7 @@ export default function TransactionsPage() {
   const [progressMsg, setProgressMsg] = useState('');
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
   const [filterAsset, setFilterAsset] = useState<string>('all');
+  const [filterYear, setFilterYear] = useState<string>('all');
 
   const fetchTransactions = (signal?: AbortSignal) => {
     setLoading(true);
@@ -64,10 +65,14 @@ export default function TransactionsPage() {
 
   const uniquePlatforms = Array.from(new Set(cessions.map(c => c.platform))).sort();
   const uniqueAssets = Array.from(new Set(cessions.map(c => c.asset))).sort();
+  // La déclaration se faisant année par année, le filtre annuel est le plus utile
+  const uniqueYears = Array.from(new Set(cessions.map(c => c.date.getFullYear())))
+    .sort((a, b) => b - a);
 
   const filteredCessions = cessions.filter(c => {
     if (filterPlatform !== 'all' && c.platform !== filterPlatform) return false;
     if (filterAsset !== 'all' && c.asset !== filterAsset) return false;
+    if (filterYear !== 'all' && c.date.getFullYear() !== Number(filterYear)) return false;
     return true;
   });
 
@@ -133,6 +138,18 @@ export default function TransactionsPage() {
 
           {cessions.length > 0 && (
             <div className="mt-6 flex flex-wrap items-center gap-6 border-t border-slate-100 pt-6">
+              <label className="flex items-center gap-3 text-sm text-slate-700">
+                <span className="font-medium">Année :</span>
+                <select
+                  value={filterYear}
+                  onChange={e => setFilterYear(e.target.value)}
+                  className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                >
+                  <option value="all">Toutes</option>
+                  {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
+
               <label className="flex items-center gap-3 text-sm text-slate-700">
                 <span className="font-medium">Plateforme :</span>
                 <select
@@ -203,7 +220,7 @@ export default function TransactionsPage() {
             {filteredCessions.length === 0 ? (
               <section className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200 text-slate-500">
                 <p>Aucune transaction ne correspond à vos filtres.</p>
-                <button onClick={() => { setFilterPlatform('all'); setFilterAsset('all'); }} className="mt-2 block text-sm text-teal-600 underline">
+                <button onClick={() => { setFilterPlatform('all'); setFilterAsset('all'); setFilterYear('all'); }} className="mt-2 block text-sm text-teal-600 underline">
                   Réinitialiser les filtres
                 </button>
               </section>

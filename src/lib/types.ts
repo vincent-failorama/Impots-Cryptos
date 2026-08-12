@@ -35,4 +35,12 @@ export type Transaction = {
   receivedQty?: number;
   /** For crypto→crypto trades: EUR value of the received asset */
   receivedValueEur?: number;
+  /**
+   * Frais de la transaction, en euros.
+   *
+   * Ils diminuent le prix de cession et augmentent le prix de revient
+   * (art. 150 VH bis). Absent lorsque l'export ne les fournit pas, ou lorsqu'ils
+   * sont libellés dans une devise non convertible de façon fiable.
+   */
+  feeEur?: number;
 };

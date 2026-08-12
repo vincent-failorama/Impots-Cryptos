@@ -129,11 +129,39 @@ export type CerfaYearSummary = {
   /** Case 3VH — total des prix de cession */
   case3VH: number;
   cessionCount: number;
+  /** Détail ligne à ligne, dans l'ordre chronologique. */
+  cessions: CerfaCessionDetail[];
   /** true si le total cédé reste sous le seuil d'exonération de 305 €. */
   isExempt: boolean;
   incomeTax: number;
   socialCharges: number;
   totalTax: number;
+};
+
+/**
+ * Détail d'une cession, tel que le formulaire 2086 l'exige.
+ *
+ * L'administration ne demande pas seulement les totaux annuels : chaque cession
+ * fait l'objet d'un bloc distinct (dates 211/212, valeur globale du portefeuille,
+ * prix de revient total…). Sans ce détail, l'utilisateur disposait des trois
+ * chiffres finaux mais devait tout reconstituer à la main.
+ */
+export type CerfaCessionDetail = {
+  date: Date;
+  asset: string;
+  platform: string;
+  /** Prix de cession, net des frais (ligne 212). */
+  proceeds: number;
+  /** Valeur globale du portefeuille au jour de la cession (ligne 213). */
+  portfolioValue: number;
+  /** Prix total d'acquisition du portefeuille (ligne 220). */
+  totalCostBasis: number;
+  /** Fraction de capital initial imputée à cette cession (ligne 224). */
+  imputedCost: number;
+  /** Plus ou moins-value de la cession (ligne 225). */
+  gainLoss: number;
+  /** false si la valorisation du portefeuille repose sur une estimation. */
+  valuationCertain: boolean;
 };
 
 export type CerfaBncSummary = {
@@ -212,6 +240,33 @@ export async function generateCerfaPdf(payload: CerfaPayload): Promise<Uint8Arra
       "revenu et 17,2 % de prélèvements sociaux). L'option pour le barème progressif, qui dépend de " +
       "votre tranche marginale, n'est pas prise en compte ici."
     );
+
+    // ── Détail par cession ─────────────────────────────────────────────────
+    // Le formulaire 2086 réclame un bloc par cession : ces valeurs se reportent
+    // directement dans les lignes correspondantes.
+    for (const y of payload.years) {
+      if (y.cessions.length === 0) continue;
+
+      L.heading(`Détail des cessions ${y.year} — report ligne à ligne (2086)`);
+      y.cessions.forEach((c, index) => {
+        L.gap(4);
+        L.row(
+          `Cession n° ${index + 1} — ${c.date.toLocaleDateString("fr-FR")} · ${c.asset} · ${c.platform}`,
+          c.valuationCertain ? "" : "valorisation estimée",
+          { strong: true }
+        );
+        L.row("  212 — Prix de cession (net de frais)", eur(c.proceeds), { muted: true });
+        L.row("  213 — Valeur globale du portefeuille", eur(c.portfolioValue), { muted: true });
+        L.row("  220 — Prix total d'acquisition du portefeuille", eur(c.totalCostBasis), { muted: true });
+        L.row("  224 — Fraction de capital initial imputée", eur(c.imputedCost), { muted: true });
+        L.row("  225 — Plus ou moins-value", eur(c.gainLoss));
+      });
+      L.gap(4);
+      L.paragraph(
+        "Les numéros de ligne correspondent au formulaire 2086 en vigueur. Vérifiez-les sur le " +
+        "millésime que vous déposez : la numérotation peut évoluer d'une année sur l'autre."
+      );
+    }
   }
 
   // ── BNC ───────────────────────────────────────────────────────────────────

@@ -114,13 +114,15 @@ test("Swissborg — achats et ventes reconnus", () => {
   assert.equal(txs[0].fiatAmount, 12500);
 });
 
-test("Swissborg — les récompenses Earn ne sont pas des cessions", () => {
+test("Swissborg — les récompenses Earn sont des revenus BNC, pas des cessions", () => {
   const txs = CSV_PARSERS.swissborg(
     `Local time,Type,Currency,Net amount,Price,Value (EUR),ID
 2023-04-01 10:00:00,Earn reward,BTC,0.01,25000,250,sb-3`
   );
-  assert.equal(txs[0].type, "trade");
+  // Imposable en BNC à la réception (case 5HQ), jamais comme plus-value
+  assert.equal(txs[0].type, "staking");
   assert.equal(txs[0].isTaxable, false);
+  assert.equal(txs[0].fiatAmount, 250);
 });
 
 // ── Ledger Live ─────────────────────────────────────────────────────────────

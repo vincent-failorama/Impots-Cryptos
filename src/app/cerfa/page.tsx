@@ -6,6 +6,7 @@ import {
   EXEMPTION_THRESHOLD_EUR, PFU,
 } from '@/lib/calculator';
 import { Transaction } from '@/lib/types';
+import { getPlatform } from '@/lib/platforms';
 import { STORAGE_KEYS, getCoinGeckoKey, readJson, writeJson } from '@/lib/storage';
 
 type ForeignAccount = {
@@ -144,6 +145,20 @@ export default function CerfaPage() {
           incomeTax: y.incomeTax,
           socialCharges: y.socialCharges,
           totalTax: y.totalTax,
+          // Détail ligne à ligne exigé par le formulaire 2086
+          cessions: [...groupedCessions[y.year]]
+            .sort((a, b) => a.date.getTime() - b.date.getTime())
+            .map((c) => ({
+              date: c.date,
+              asset: c.asset,
+              platform: getPlatform(c.platform).label,
+              proceeds: c.grossProceeds,
+              portfolioValue: c.portfolioValueAtSale,
+              totalCostBasis: c.globalCostBasisBefore,
+              imputedCost: c.acquisitionCost,
+              gainLoss: c.gainLoss,
+              valuationCertain: c.portfolioValueCertain,
+            })),
         })),
         bnc: Object.keys(bncByYear).map(Number).sort((a, b) => b - a).map((year) => ({
           year, ...bncByYear[year],

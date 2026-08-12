@@ -102,6 +102,7 @@ src/
   app/
     page.tsx              # Accueil — graphique des plus-values par année
     import/               # Import CSV et connexion API brokers
+    donnees/              # Transactions brutes — ajout, correction, sauvegarde
     transactions/         # Tableau des cessions imposables
     cerfa/                # Cerfa 2086 (plus-values) + 3916-bis (comptes étrangers) + BNC
     aide/                 # Guide d'utilisation
@@ -165,7 +166,8 @@ Tout tourne localement. Aucune donnée n'est envoyée à un service tiers, à l'
 
 ## Limites
 
-- **Staking/mining/airdrop** : seul l'export Coinbase inclut ces événements. Pour Binance, Kraken et KuCoin il faut importer le fichier "Ledgers" / "Earn History" manuellement (pas encore supporté).
+- **Staking/mining/airdrop** : détectés automatiquement lorsque l'export mentionne le type d'opération (« Staking Reward », « Earn », « Récompense »…). Certaines plateformes ne les incluent pas dans l'export des ordres : il faut alors importer le fichier « Ledgers » / « Earn History » séparément, ou saisir la ligne depuis la page **Mes données**.
+- **Frais** : lus depuis les CSV lorsqu'ils sont libellés en euros. Des frais payés en crypto (BNB, KCS…) sont ignorés plutôt qu'approximés — leur conversion exigerait le cours à la date exacte.
 - **Prix historiques** : l'API CoinGecko publique est limitée (~30 req/min). Un historique volumineux peut prendre plusieurs minutes. Une [clé Demo gratuite](https://www.coingecko.com/en/api) réduit ce délai de moitié.
 - **Valeur du portefeuille incertaine** : si CoinGecko ne retourne pas de prix pour un actif, la valeur globale du portefeuille est estimée par fallback. Les lignes concernées sont signalées par un ⚠️ dans le tableau des cessions.
 - Cet outil est une aide à la déclaration. Il ne constitue pas un conseil fiscal. En cas de doute, consultez un expert-comptable ou [impots.gouv.fr](https://www.impots.gouv.fr).

@@ -43,6 +43,44 @@ const SELL_TERMS = new Set([
   "verkauf", "venta", "vendita", "verkoop",
 ]);
 
+/**
+ * Libellés désignant un revenu reçu sans contrepartie : staking, minage,
+ * récompense, parrainage… Ces revenus sont imposables en BNC à la date de
+ * réception (case 5HQ), indépendamment des plus-values de cession.
+ *
+ * Jusqu'ici seul l'export Coinbase les identifiait : les revenus Binance Earn,
+ * Kraken Staking ou Swissborg Earn étaient importés comme opérations neutres
+ * et n'apparaissaient dans aucune déclaration.
+ */
+const INCOME_TERMS: Array<{ pattern: RegExp; type: "staking" | "mining" | "airdrop" }> = [
+  { pattern: /\b(staking|stake|earn|epargne|interest|interet|yield|lending)\b/, type: "staking" },
+  { pattern: /\b(mining|minage|miner|pool)\b/, type: "mining" },
+  { pattern: /\b(airdrop|reward|recompense|bonus|referral|parrainage|cashback|distribution)\b/, type: "airdrop" },
+];
+
+/**
+ * Retire les diacritiques : « Épargne » et « Récompense » se comparent alors
+ * comme leurs équivalents non accentués. Nécessaire aussi parce que `\b` ne
+ * reconnaît pas les lettres accentuées comme des caractères de mot — un motif
+ * `\bépargne\b` ne correspondrait jamais.
+ */
+function deaccent(input: string): string {
+  return input.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+/**
+ * Reconnaît un revenu passif dans le libellé d'opération.
+ * @returns le type BNC correspondant, ou `null` si ce n'en est pas un.
+ */
+export function detectIncomeType(raw: string): "staking" | "mining" | "airdrop" | null {
+  const cleaned = deaccent(raw.trim().toLowerCase());
+  if (!cleaned) return null;
+  for (const { pattern, type } of INCOME_TERMS) {
+    if (pattern.test(cleaned)) return type;
+  }
+  return null;
+}
+
 export function normalizeSide(raw: string): "buy" | "sell" | "trade" {
   // On isole le premier mot : « Advanced Trade Buy » ou « Achat au comptant »
   const cleaned = raw.trim().toLowerCase();
@@ -81,7 +119,11 @@ export function createCsvParser(
       const priceEur =
         pickNumber(row, ...columns.price) || (qty ? fiatAmount / qty : 0);
 
-      const type: Transaction["type"] = normalizeSide(pick(row, ...columns.side));
+      const rawSide = pick(row, ...columns.side);
+      // Un revenu passif prime sur le sens de l'opération : « Staking Reward »
+      // n'est ni un achat ni une vente, mais un revenu imposable en BNC.
+      const incomeType = detectIncomeType(rawSide);
+      const type: Transaction["type"] = incomeType ?? normalizeSide(rawSide);
 
       const tx: Transaction = {
         id: pick(row, ...columns.id) || `${platform}-${index}-${date.valueOf()}`,
@@ -96,6 +138,20 @@ export function createCsvParser(
         // crypto→crypto bénéficient du sursis d'imposition (art. 150 VH bis CGI).
         isTaxable: type === "sell",
       };
+
+      // Les frais ne sont retenus que si l'export les libelle en euros :
+      // convertir des frais payés en BNB ou en KCS demanderait un cours à la
+      // date exacte, et une valeur approximative fausserait le prix de cession.
+      const feeAmount = columns.fee ? pickNumber(row, ...columns.fee) : 0;
+      if (feeAmount > 0) {
+        const feeCurrency = columns.feeCurrency
+          ? pick(row, ...columns.feeCurrency).toUpperCase()
+          : "";
+        if (!feeCurrency || feeCurrency === "EUR") {
+          tx.feeEur = feeAmount;
+        }
+      }
+
       return [tx];
     });
   };
