@@ -2,6 +2,8 @@
   "name": "crypto-tax-fr",
   "version": "0.1.0",
   "private": true,
+  "description": "Calculateur d'impôt sur les crypto-actifs en France (article 150 VH bis)",
+  "author": "vincent-failorama",
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
@@ -25,7 +27,8 @@
     ],
     "files": [
       "electron/**/*",
-      ".next/standalone/**/*"
+      ".next/standalone/**/*",
+      "!.next/standalone/data/**"
     ],
     "icon": "public/icon.png",
     "win": {

@@ -40,7 +40,7 @@ const quickLinks = [
   { href: '#import', label: "Importer dans l'app" },
   { href: '#cessions', label: 'Lire les résultats' },
   { href: '#cerfa', label: 'Générer le Cerfa' },
-  { href: '#loi', label: 'La loi en clair' },
+  { href: '#loi', label: 'Impôt, exonération et loi' },
 ];
 
 const resultColumns = [
@@ -72,8 +72,9 @@ export default function AidePage() {
   const workflowSteps: Omit<Step, 'num'>[] = [
     { title: "Exportez vos CSV depuis chaque plateforme", body: "Chaque exchange (Binance, Kraken, Coinbase…) vous permet de télécharger l'historique de vos ordres au format CSV. Vous aurez besoin de l'historique complet depuis votre première transaction crypto." },
     { title: "Importez-les dans l'application", body: <>Rendez-vous sur la page <Link href="/import" className="text-teal-600 underline">Importer CSV</Link>, sélectionnez la plateforme correspondante, puis choisissez le fichier. Répétez l&apos;opération pour chaque plateforme et chaque année.</> },
-    { title: "Consultez vos cessions imposables", body: <>La page <Link href="/transactions" className="text-teal-600 underline">Cessions</Link> calcule automatiquement vos plus-values et moins-values selon la formule 150 VH bis.</> },
-    { title: "Générez les formulaires Cerfa", body: <>La page <Link href="/cerfa" className="text-teal-600 underline">Cerfa</Link> vous permet de télécharger en PDF votre déclaration 2086 (plus-values) et 3916-bis (comptes à l&apos;étranger).</> },
+    { title: "Vérifiez et complétez vos données", body: <>La page <Link href="/donnees" className="text-teal-600 underline">Mes données</Link> affiche vos transactions brutes. Corrigez une ligne mal interprétée, ajoutez une opération de gré à gré ou une plateforme non supportée, et produisez une sauvegarde.</> },
+    { title: "Consultez vos cessions imposables", body: <>La page <Link href="/transactions" className="text-teal-600 underline">Cessions</Link> calcule automatiquement vos plus-values et moins-values selon la formule 150 VH bis, année par année.</> },
+    { title: "Générez votre récapitulatif Cerfa", body: <>La page <Link href="/cerfa" className="text-teal-600 underline">Cerfa</Link> affiche les cases 3AN / 3BN / 3VH, vos revenus BNC, l&apos;impôt estimé, et exporte un PDF contenant le détail ligne à ligne exigé par le formulaire 2086.</> },
   ];
 
   const apiKeyGuides = API_PLATFORMS.map((p) => ({
@@ -96,14 +97,14 @@ export default function AidePage() {
   const importSteps: Omit<Step, 'num'>[] = [
     { title: "Sélectionnez la plateforme", body: "Choisissez la plateforme qui correspond au fichier CSV que vous allez importer. Ce choix détermine comment le fichier est analysé." },
     { title: "Choisissez le fichier CSV", body: "Le fichier est analysé immédiatement dans votre navigateur. Aucune donnée n'est envoyée sur Internet — tout reste local." },
-    { title: "Vérifiez le message de confirmation", body: 'L\'application indique combien de transactions ont été importées. Si "0 transaction trouvée", vérifiez que la plateforme sélectionnée correspond bien au fichier.' },
+    { title: "Vérifiez le message de confirmation", body: 'L\'application indique combien de transactions ont été importées. Si "0 transaction trouvée", elle affiche les colonnes présentes dans votre fichier et vous propose de désigner vous-même à quoi chacune correspond — la correspondance est ensuite mémorisée pour cette plateforme.' },
     { title: "Répétez pour chaque plateforme et chaque année", body: "Les transactions s'accumulent sans doublons : importer deux fois le même fichier ne crée pas de doublons." },
   ];
 
   const importTips = [
     <>Importez l&apos;historique <strong>complet</strong> depuis votre première transaction, pas seulement l&apos;année en cours. Le calcul 150 VH bis dépend du coût d&apos;acquisition cumulé depuis le début.</>,
     <>Si vous avez plusieurs comptes sur la même plateforme, exportez et importez chaque compte séparément.</>,
-    <>Utilisez le bouton <em>Effacer toutes les transactions</em> uniquement pour repartir de zéro.</>,
+    <>Avant toute manipulation importante, produisez une sauvegarde depuis la page <Link href="/donnees" className="text-teal-600 underline">Mes données</Link> : elle vous permet de tout restaurer en cas d&apos;erreur.</>,
   ];
 
   const cerfaSections: CerfaSection[] = [
@@ -114,8 +115,9 @@ export default function AidePage() {
       cases: [
         { label: 'Case 3AN', desc: <>Saisissez votre plus-value nette de l&apos;année (si positive). Reportez cette valeur en case 3AN de la 2042-C.</> },
         { label: 'Case 3BN', desc: <>Saisissez votre moins-value nette (si négative). <span className="text-amber-700 font-medium">Non reportable sur les années suivantes.</span></> },
-        { label: 'Case 3VH', desc: <>Total des prix de cession de l&apos;année (somme des colonnes &quot;Produit&quot;).</> },
+        { label: 'Case 3VH', desc: <>Total des prix de cession de l&apos;année (somme des colonnes &quot;Produit&quot;). C&apos;est ce total qui détermine l&apos;exonération : en dessous de 305 €, aucune imposition.</> },
       ],
+      outro: <>La page affiche également l&apos;<strong>impôt estimé</strong> (12,8 % d&apos;impôt sur le revenu + 17,2 % de prélèvements sociaux) et le <strong>détail de chaque cession</strong> dans le PDF, tel que le formulaire 2086 le réclame.</>,
     },
     {
       id: '3916',
@@ -131,10 +133,13 @@ export default function AidePage() {
   ];
 
   const loiPoints = [
-    <>Les <strong>moins-values ne sont pas reportables</strong> sur les années suivantes.</>,
-    <>Les échanges crypto→crypto (<em>trades</em>) sont des <strong>événements taxables</strong> au même titre que les ventes en euros.</>,
-    <>Les <strong>comptes à l&apos;étranger</strong> doivent être déclarés chaque année via le 3916-bis, même sans activité.</>,
-    <>Le <strong>staking, mining et airdrop</strong> peuvent générer des revenus imposables dans une autre catégorie (BNC). Cette application ne les calcule pas.</>,
+    <>Les échanges <strong>crypto→crypto</strong> bénéficient du <strong>sursis d&apos;imposition</strong> (art. 150 VH bis, II-A) : ils ne déclenchent aucune imposition. Le prix de revient est reporté jusqu&apos;à la sortie vers une monnaie fiat.</>,
+    <>Les plus-values sont <strong>exonérées</strong> si le total annuel de vos prix de cession n&apos;excède pas <strong>305 €</strong>. Le seuil porte sur le montant cédé, pas sur le gain.</>,
+    <>Les <strong>moins-values</strong> s&apos;imputent sur les plus-values de la <strong>même année</strong> et ne sont pas reportables sur les suivantes.</>,
+    <>L&apos;impôt est le <strong>prélèvement forfaitaire unique de 30 %</strong> (12,8 % d&apos;impôt sur le revenu + 17,2 % de prélèvements sociaux). Vous pouvez opter pour le barème progressif : les prélèvements sociaux restent dus au même taux.</>,
+    <>Le <strong>staking, mining et airdrop</strong> sont imposables en <strong>BNC à la réception</strong> (case 5HQ de la 2042-C-PRO), indépendamment des plus-values. L&apos;application les isole automatiquement.</>,
+    <>Les <strong>frais</strong> augmentent le prix de revient lors d&apos;un achat et diminuent le prix de cession lors d&apos;une vente.</>,
+    <>Les <strong>comptes à l&apos;étranger</strong> doivent être déclarés chaque année via le 3916-bis, même sans activité. Le défaut de déclaration expose à une amende de 750 € par compte.</>,
   ];
 
   useEffect(() => {
