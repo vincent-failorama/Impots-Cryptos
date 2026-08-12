@@ -1,6 +1,6 @@
 {
   "name": "crypto-tax-fr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Calculateur d'impôt sur les crypto-actifs en France (article 150 VH bis)",
   "author": "vincent-failorama",
