@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { CessionResult, BNCResult, calculateCessions, computeBNCIncome, computeTotalGain } from '@/lib/calculator';
 import { Transaction } from '@/lib/types';
+import { STORAGE_KEYS, getCoinGeckoKey, readJson, writeJson } from '@/lib/storage';
 
 type ForeignAccount = {
   id: string;
@@ -27,6 +28,8 @@ export default function CerfaPage() {
   const [cessions, setCessions] = useState<CessionResult[]>([]);
   const [bncResults, setBncResults] = useState<BNCResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const [accounts, setAccounts] = useState<ForeignAccount[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -41,25 +44,24 @@ export default function CerfaPage() {
       .then((res) => res.json())
       .then(async (data: Array<Omit<Transaction, 'date'> & { date: string }>) => {
         const transactions: Transaction[] = data.map((tx) => ({ ...tx, date: new Date(tx.date) }));
-        const cgApiKey = localStorage.getItem('crypto-tax-coingecko') ?? undefined;
+        const cgApiKey = getCoinGeckoKey();
         setCessions(await calculateCessions(transactions, undefined, cgApiKey));
         setBncResults(computeBNCIncome(transactions));
       })
-      .catch((err) => { if (err.name !== 'AbortError') {} })
+      .catch((err) => {
+        if (err.name !== 'AbortError') setError('Impossible de charger les transactions.');
+      })
       .finally(() => setLoading(false));
 
-    // Charger les comptes 3916-bis depuis le localStorage (pour préserver la vie privée)
-    const saved = localStorage.getItem('crypto-tax-3916');
-    if (saved) {
-      try { setAccounts(JSON.parse(saved)); } catch { /* ignorer */ }
-    }
+    // Comptes 3916-bis : conservés uniquement dans le navigateur (vie privée)
+    setAccounts(readJson<ForeignAccount[]>(STORAGE_KEYS.foreignAccounts, []));
 
     return () => controller.abort();
   }, []);
 
   const saveAccounts = (accs: ForeignAccount[]) => {
     setAccounts(accs);
-    localStorage.setItem('crypto-tax-3916', JSON.stringify(accs));
+    writeJson(STORAGE_KEYS.foreignAccounts, accs);
   };
 
   const handleAddAccount = (e: FormEvent) => {
@@ -100,8 +102,67 @@ export default function CerfaPage() {
     setYearlyFees(prev => ({ ...prev, [year]: value }));
   };
 
+  const bncByYear = bncResults.reduce((acc, r) => {
+    const y = r.date.getFullYear();
+    if (!acc[y]) acc[y] = { total: 0, staking: 0, mining: 0, airdrop: 0 };
+    acc[y].total += r.incomeEur;
+    acc[y][r.type] += r.incomeEur;
+    return acc;
+  }, {} as Record<number, { total: number; staking: number; mining: number; airdrop: number }>);
+
+  const handleDownloadPdf = async () => {
+    setPdfBusy(true);
+    setError('');
+    try {
+      // pdf-lib pèse ~180 kB : on ne le charge qu'au moment de l'export, pour
+      // ne pas alourdir le premier rendu de la page.
+      const { generateCerfaPdf } = await import('@/lib/cerfa');
+
+      const bytes = await generateCerfaPdf({
+        generatedAt: new Date(),
+        years: years.map((year) => {
+          const yearCessions = groupedCessions[year];
+          const gain = computeTotalGain(yearCessions) - (parseFloat(yearlyFees[year]) || 0);
+          return {
+            year,
+            case3AN: gain > 0 ? gain : 0,
+            case3BN: gain < 0 ? Math.abs(gain) : 0,
+            case3VH: yearCessions.reduce((sum, c) => sum + c.grossProceeds, 0),
+            cessionCount: yearCessions.length,
+          };
+        }),
+        bnc: Object.keys(bncByYear).map(Number).sort((a, b) => b - a).map((year) => ({
+          year, ...bncByYear[year],
+        })),
+        accounts: accounts.map((a) => ({
+          institution: a.institution,
+          url: a.url,
+          country: a.country,
+          accountNumber: a.accountNumber,
+          openingDate: a.openingDate,
+          closingDate: a.closingDate,
+        })),
+      });
+
+      // Uint8Array -> Blob : on passe par un ArrayBuffer pour satisfaire BlobPart
+      const blob = new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `recapitulatif-fiscal-crypto-${new Date().getFullYear()}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(`Échec de la génération du PDF : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-10 print:bg-white print:px-0 print:py-0">
+    <main className="px-6 py-10 print:bg-white print:px-0 print:py-0">
       <div className="mx-auto max-w-5xl space-y-10 print:space-y-6">
 
         {/* En-tête (masqué à l'impression) */}
@@ -110,18 +171,46 @@ export default function CerfaPage() {
           <p className="mt-2 text-sm text-slate-600">
             Aide à la déclaration de vos plus-values (Cerfa 2086) et de vos comptes d&apos;actifs numériques détenus à l&apos;étranger (Cerfa 3916-bis).
           </p>
-          <div className="mt-6 flex gap-4">
-            <button onClick={() => window.print()} className="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 transition">
-              🖨️ Imprimer la fiche récapitulative
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={pdfBusy || loading}
+              className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pdfBusy ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Génération…
+                </>
+              ) : (
+                <>↓ Télécharger le PDF</>
+              )}
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:text-slate-900"
+            >
+              Imprimer la fiche
             </button>
           </div>
+
+          {error && (
+            <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </p>
+          )}
         </div>
 
         {/* CERFA 2086 */}
         <section className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200 print:shadow-none print:ring-0 print:p-0">
           <h2 className="text-2xl font-semibold text-slate-900 border-b pb-4 mb-6">Cerfa 2086 — Plus-values</h2>
           {loading ? (
-            <p className="text-slate-500 text-sm">Calcul en cours...</p>
+            <p className="text-slate-500 text-sm animate-pulse">Calcul en cours…</p>
+          ) : error ? (
+            <p className="text-sm text-red-600">{error}</p>
           ) : cessions.length === 0 ? (
             <p className="text-slate-500 text-sm">Aucune cession imposable trouvée pour générer la déclaration.</p>
           ) : (
@@ -176,13 +265,7 @@ export default function CerfaPage() {
 
         {/* BNC — Staking / Mining / Airdrop */}
         {bncResults.length > 0 && (() => {
-          const byYear = bncResults.reduce((acc, r) => {
-            const y = r.date.getFullYear();
-            if (!acc[y]) acc[y] = { total: 0, staking: 0, mining: 0, airdrop: 0 };
-            acc[y].total += r.incomeEur;
-            acc[y][r.type] += r.incomeEur;
-            return acc;
-          }, {} as Record<number, { total: number; staking: number; mining: number; airdrop: number }>);
+          const byYear = bncByYear;
           const bncYears = Object.keys(byYear).map(Number).sort((a, b) => b - a);
           return (
             <section className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200 print:shadow-none print:ring-0 print:p-0">
@@ -270,7 +353,7 @@ export default function CerfaPage() {
           )}
 
           {accounts.length === 0 ? (
-            <p className="text-slate-500 text-sm">Aucun compte renseigné. Cliquez sur "+ Ajouter un compte" pour commencer.</p>
+            <p className="text-slate-500 text-sm">Aucun compte renseigné. Cliquez sur &quot;+ Ajouter un compte&quot; pour commencer.</p>
           ) : (
             <div className="space-y-6 print:space-y-4">
               {accounts.map(acc => (

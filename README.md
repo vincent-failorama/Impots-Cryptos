@@ -14,7 +14,7 @@ Plus-value = Prix de cession − (Prix de revient global × Prix de cession / Va
 
 - Le **prix de revient global** est cumulé depuis le premier achat et diminué proportionnellement à chaque cession
 - La **valeur globale du portefeuille** est estimée via l'API CoinGecko à la date de chaque cession
-- Les échanges **crypto→crypto** sont des événements taxables au même titre que les ventes en euros
+- Les échanges **crypto→crypto** bénéficient du **sursis d'imposition** (art. 150 VH bis, II-A) : ils ne déclenchent pas d'imposition, mais le prix de revient global est reporté jusqu'à la sortie vers une monnaie fiat
 - Le **staking, mining et airdrop** entrent dans le prix de revient global et génèrent un revenu BNC séparé
 
 ---
@@ -84,8 +84,42 @@ src/
   lib/
     types.ts              # Types partagés (Transaction, TransactionType…)
     calculator.ts         # Moteur de calcul 150 VH bis + BNC
-    pricer.ts             # Récupération des prix historiques CoinGecko (throttle + retry)
+    cerfa.ts              # Génération PDF du récapitulatif 2086 / BNC / 3916-bis
+    pricer.ts             # Prix historiques CoinGecko (throttle, retry, cache persistant)
     parsers/              # Parsers CSV par plateforme
+```
+
+## Ajouter une plateforme
+
+Toutes les plateformes sont décrites dans `src/lib/platforms.ts` — libellé, guide
+d'export, colonnes CSV, configuration API. Le type `TransactionPlatform`, la
+validation serveur, les menus de la page Importer et les guides de la page Aide
+en dérivent automatiquement.
+
+**Format CSV « une ligne = un ordre »** (le cas courant) :
+
+1. Ajouter une entrée dans `PLATFORMS`, avec `csvColumns` décrivant les libellés
+   de colonnes de l'export (plusieurs alias possibles par champ).
+2. Ajouter `monid: fromRegistry("monid")` dans `CSV_PARSERS`
+   (`src/lib/parsers/index.ts`).
+
+Aucun code d'analyse à écrire : le parser générique est piloté par `csvColumns`.
+Si l'étape 2 est oubliée, la compilation échoue.
+
+**Format atypique** — écrire un parser dédié (voir `coinbase.ts`, `kucoin.ts`) et
+le référencer dans `CSV_PARSERS` à la place de `fromRegistry`.
+
+**Import par API** — renseigner le bloc `api` du registre et créer la route
+`src/app/api/fetch/<id>/route.ts`. Chaque plateforme ayant son propre schéma de
+signature, cette partie reste spécifique.
+
+## Scripts
+
+```bash
+npm run dev        # serveur de développement
+npm run build      # build de production
+npm run lint       # ESLint (next lint)
+npm run typecheck  # tsc --noEmit
 ```
 
 ---
@@ -95,6 +129,7 @@ src/
 Tout tourne localement. Aucune donnée n'est envoyée à un service tiers, à l'exception des appels à l'API publique **CoinGecko** pour récupérer les prix historiques.
 
 - Transactions stockées dans `data/transactions.json` sur votre machine
+- Prix historiques CoinGecko mis en cache dans le localStorage du navigateur (un cours passé étant immuable, il n'est récupéré qu'une seule fois)
 - Clés API brokers : utilisées le temps d'une requête, jamais persistées sur disque (option localStorage disponible)
 - Comptes 3916-bis : stockés dans le localStorage du navigateur uniquement
 - Clé API CoinGecko (optionnelle) : stockée dans le localStorage du navigateur

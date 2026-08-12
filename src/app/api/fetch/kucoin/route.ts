@@ -109,5 +109,5 @@ export async function POST(request: Request) {
     }
     transactions.sort((a, b) => a.date.getTime() - b.date.getTime());
     return NextResponse.json({ transactions, count: transactions.length });
-  } catch (err: any) { return NextResponse.json({ error: err.message || "Erreur KuCoin" }, { status: 502 }); }
+  } catch (err) { return NextResponse.json({ error: err instanceof Error ? err.message : "Erreur KuCoin" }, { status: 502 }); }
 }

@@ -3,33 +3,12 @@
 import React, { useState, ChangeEvent } from 'react';
 import Link from 'next/link';
 import type { Transaction } from '@/lib/types';
-import { parseBinanceCsv } from '@/lib/parsers/binance';
-import { parseBitgetCsv } from '@/lib/parsers/bitget';
-import { parseKrakenCsv } from '@/lib/parsers/kraken';
-import { parseGateCsv } from '@/lib/parsers/gate';
-import { parseKucoinCsv } from '@/lib/parsers/kucoin';
-import { parseCoinbaseCsv } from '@/lib/parsers/coinbase';
-
-const platforms: Array<{ value: string; label: string }> = [
-  { value: 'binance', label: 'Binance' },
-  { value: 'bitget', label: 'Bitget' },
-  { value: 'coinbase', label: 'Coinbase' },
-  { value: 'gate', label: 'Gate.io' },
-  { value: 'kraken', label: 'Kraken' },
-  { value: 'kucoin', label: 'KuCoin' },
-];
-
-function parseCsv(platform: string, csv: string): Transaction[] {
-  switch (platform) {
-    case 'binance':  return parseBinanceCsv(csv);
-    case 'bitget':   return parseBitgetCsv(csv);
-    case 'kraken':   return parseKrakenCsv(csv);
-    case 'gate':     return parseGateCsv(csv);
-    case 'kucoin':   return parseKucoinCsv(csv);
-    case 'coinbase': return parseCoinbaseCsv(csv);
-    default: return [];
-  }
-}
+import { parseCsv } from '@/lib/parsers';
+import { API_PLATFORMS, PLATFORMS, getPlatform, type PlatformId } from '@/lib/platforms';
+import { API_QUOTE_ASSETS } from '@/lib/quote-currencies';
+import {
+  STORAGE_KEYS, brokerKeysStorageKey, readJson, readString, remove, writeJson, writeString,
+} from '@/lib/storage';
 
 async function saveTransactions(transactions: Transaction[]): Promise<{ saved: number; duplicates: number }> {
   const res = await fetch('/api/transactions', {
@@ -44,7 +23,7 @@ async function saveTransactions(transactions: Transaction[]): Promise<{ saved: n
 // ── Composant CSV ─────────────────────────────────────────────────────────────
 
 function CsvImport() {
-  const [platform, setPlatform] = useState<string>('binance');
+  const [platform, setPlatform] = useState<PlatformId>(PLATFORMS[0].id);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -71,24 +50,26 @@ function CsvImport() {
     }
   };
 
+  const csvNote = getPlatform(platform).csvNote;
+
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-        <strong>Limite Binance :</strong> l&apos;export CSV Binance est limité à 6 mois par fichier.
-        Pour un historique complet, utilisez l&apos;onglet <strong>Via API</strong> ci-dessus,
-        ou exportez et importez plusieurs périodes successives.
-      </div>
+      {csvNote && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <strong>{getPlatform(platform).label} :</strong> {csvNote}
+        </div>
+      )}
 
       <div className="grid gap-6 sm:grid-cols-2">
         <label className="block">
           <span className="text-sm font-medium text-slate-700">Plateforme</span>
           <select
             value={platform}
-            onChange={(e) => setPlatform(e.target.value)}
+            onChange={(e) => setPlatform(e.target.value as PlatformId)}
             className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
           >
-            {platforms.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
+            {PLATFORMS.map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
             ))}
           </select>
         </label>
@@ -114,33 +95,22 @@ function CsvImport() {
 
 // ── Composant API Multi-Brokers ───────────────────────────────────────────────
 
-const apiPlatforms: Array<{ value: string; label: string }> = [
-  { value: 'binance', label: 'Binance' },
-  { value: 'kraken', label: 'Kraken' },
-  { value: 'coinbase', label: 'Coinbase' },
-  { value: 'gate', label: 'Gate.io' },
-  { value: 'kucoin', label: 'KuCoin' },
-];
+type SavedKeys = { key: string; secret: string; passphrase: string };
 
-const STORAGE_KEY = (p: string) => `crypto-tax-api-${p}`;
-
-function loadSavedKeys(platform: string) {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY(platform));
-    return raw ? JSON.parse(raw) as { key: string; secret: string; passphrase: string } : null;
-  } catch { return null; }
+function loadSavedKeys(platform: string): SavedKeys | null {
+  return readJson<SavedKeys | null>(brokerKeysStorageKey(platform), null);
 }
 
 function saveKeys(platform: string, key: string, secret: string, passphrase: string) {
-  try { localStorage.setItem(STORAGE_KEY(platform), JSON.stringify({ key, secret, passphrase })); } catch { /* ignore */ }
+  writeJson(brokerKeysStorageKey(platform), { key, secret, passphrase });
 }
 
 function clearKeys(platform: string) {
-  try { localStorage.removeItem(STORAGE_KEY(platform)); } catch { /* ignore */ }
+  remove(brokerKeysStorageKey(platform));
 }
 
 function BrokerApiImport() {
-  const [platform, setPlatform] = useState<string>('binance');
+  const [platform, setPlatform] = useState<PlatformId>(API_PLATFORMS[0].id);
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [apiPassphrase, setApiPassphrase] = useState('');
@@ -179,7 +149,7 @@ function BrokerApiImport() {
       setHasSaved(true);
     }
     setStatus('loading');
-    setProgress(`Connexion à l'API ${apiPlatforms.find(p => p.value === platform)?.label}…`);
+    setProgress(`Connexion à l'API ${platformConfig.label}…`);
     setMessage('');
 
     try {
@@ -213,7 +183,7 @@ function BrokerApiImport() {
       const dupNote = duplicates > 0 ? `, ${duplicates} doublon(s) ignoré(s)` : '';
       
       let extNote = '';
-      if ((platform === 'binance' || platform === 'gate') && data.symbolsQueried) {
+      if (platformConfig.api?.queriesManyPairs && data.symbolsQueried) {
         extNote = ` sur ${data.symbolsQueried} paires interrogées.`;
       }
       const errNote = data.errors?.length ? ` — ${data.errors.length} erreur(s).` : '';
@@ -228,25 +198,14 @@ function BrokerApiImport() {
     }
   };
 
-  let platformNote = '';
-  if (platform === 'binance') {
-    platformNote = 'Créez une clé API en lecture seule (permission "Enable Reading" uniquement — n\'activez pas le trading ni les retraits).';
-  } else if (platform === 'kraken') {
-    platformNote = 'Créez une clé API avec les permissions "Query Funds" et "Query Closed Orders & Trades" uniquement.';
-  } else if (platform === 'coinbase') {
-    platformNote = 'Créez une clé API (Legacy API Key) avec la permission "brokerage:orders:read" ou "wallet:trades:read" uniquement.';
-  } else if (platform === 'gate') {
-    platformNote = 'Créez une clé API v4 en lecture seule (permission "Spot Trade" configurée sur "Read Only").';
-  } else if (platform === 'kucoin') {
-    platformNote = 'Créez une clé API Trading avec la permission "General" uniquement. Renseignez également la phrase secrète (Passphrase) créée avec la clé.';
-  }
-
+  const platformConfig = getPlatform(platform);
+  const needsPassphrase = platformConfig.api?.requiresPassphrase === true;
   return (
     <div className="space-y-6">
       {/* Avertissement sécurité */}
       <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 space-y-2">
         <p className="font-semibold">Sécurité de la clé API</p>
-        <p>{platformNote}</p>
+        <p>{platformConfig.api?.securityNote}</p>
         <div className="flex items-center justify-between flex-wrap gap-3 pt-1">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
@@ -269,16 +228,16 @@ function BrokerApiImport() {
         </div>
       </div>
 
-      <div className={`grid gap-4 ${platform === 'kucoin' ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
+      <div className={`grid gap-4 ${needsPassphrase ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
         <label className="block">
           <span className="text-sm font-medium text-slate-700">Plateforme API</span>
           <select
             value={platform}
-            onChange={(e) => setPlatform(e.target.value)}
+            onChange={(e) => setPlatform(e.target.value as PlatformId)}
             className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
           >
-            {apiPlatforms.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
+            {API_PLATFORMS.map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
             ))}
           </select>
         </label>
@@ -307,7 +266,7 @@ function BrokerApiImport() {
           />
         </label>
 
-        {platform === 'kucoin' && (
+        {needsPassphrase && (
           <label className="block">
             <span className="text-sm font-medium text-slate-700">Passphrase</span>
             <input
@@ -337,7 +296,7 @@ function BrokerApiImport() {
             {progress || 'Récupération en cours…'}
           </>
         ) : (
-          `Récupérer tout l'historique ${apiPlatforms.find(p => p.value === platform)?.label}`
+          `Récupérer tout l'historique ${platformConfig.label}`
         )}
       </button>
 
@@ -351,9 +310,10 @@ function BrokerApiImport() {
         </div>
       )}
 
-      {(platform === 'binance' || platform === 'gate') && (
+      {platformConfig.api?.queriesManyPairs && (
         <p className="text-xs text-slate-400">
-          L&apos;import {apiPlatforms.find(p => p.value === platform)?.label} interroge toutes les paires majeures (EUR, USDT, USDC, BTC, ETH) disponibles.
+          L&apos;import {platformConfig.label} interroge toutes les paires majeures
+          ({API_QUOTE_ASSETS.join(', ')}) disponibles.
           Opération pouvant prendre 30 à 60 secondes selon le nombre de paires.
         </p>
       )}
@@ -363,26 +323,24 @@ function BrokerApiImport() {
 
 // ── Clé API CoinGecko ─────────────────────────────────────────────────────────
 
-const CG_STORAGE_KEY = 'crypto-tax-coingecko';
-
 function CoingeckoKeySection() {
   const [key, setKey] = useState('');
   const [saved, setSaved] = useState(false);
 
   React.useEffect(() => {
-    const stored = localStorage.getItem(CG_STORAGE_KEY);
+    const stored = readString(STORAGE_KEYS.coingeckoKey);
     if (stored) { setKey(stored); setSaved(true); }
   }, []);
 
   const handleSave = () => {
     const k = key.trim();
     if (!k) return;
-    localStorage.setItem(CG_STORAGE_KEY, k);
+    writeString(STORAGE_KEYS.coingeckoKey, k);
     setSaved(true);
   };
 
   const handleClear = () => {
-    localStorage.removeItem(CG_STORAGE_KEY);
+    remove(STORAGE_KEYS.coingeckoKey);
     setKey('');
     setSaved(false);
   };
@@ -442,7 +400,7 @@ export default function ImportPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-10">
+    <main className="px-6 py-10">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200">
           <h1 className="text-3xl font-semibold text-slate-900">Importer des transactions</h1>

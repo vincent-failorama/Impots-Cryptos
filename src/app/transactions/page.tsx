@@ -3,18 +3,22 @@
 import { useEffect, useState } from 'react';
 import { CessionResult, calculateCessions, computeTotalGain, computeTotalTaxable } from '@/lib/calculator';
 import { Transaction } from '@/lib/types';
+import { getCoinGeckoKey } from '@/lib/storage';
 import Link from 'next/link';
 
+// Les classes Tailwind doivent être écrites en toutes lettres : une classe
+// construite dynamiquement (`text-${align}`) n'est pas détectée au build et
+// n'est donc jamais générée dans la feuille de style.
 const TABLE_HEADERS = [
-  { label: 'Date', align: 'left', className: 'text-slate-900' },
-  { label: 'Plateforme', align: 'left', className: 'text-slate-900' },
-  { label: 'Actif', align: 'left', className: 'text-slate-900' },
-  { label: 'Qté', align: 'right', className: 'text-slate-900' },
-  { label: 'Produit', align: 'right', className: 'text-slate-900' },
-  { label: 'Coût imputé', align: 'right', className: 'text-slate-900' },
-  { label: 'Gain / Perte', align: 'right', className: 'text-slate-900' },
-  { label: 'Val. portefeuille ⓘ', align: 'right', className: 'text-slate-500', title: 'Valeur globale estimée du portefeuille au moment de la cession (art. 150 VH bis)' },
-  { label: 'Actions', align: 'center', className: 'text-slate-900' },
+  { label: 'Date', className: 'text-left text-slate-900' },
+  { label: 'Plateforme', className: 'text-left text-slate-900' },
+  { label: 'Actif', className: 'text-left text-slate-900' },
+  { label: 'Qté', className: 'text-right text-slate-900' },
+  { label: 'Produit', className: 'text-right text-slate-900' },
+  { label: 'Coût imputé', className: 'text-right text-slate-900' },
+  { label: 'Gain / Perte', className: 'text-right text-slate-900' },
+  { label: 'Val. portefeuille ⓘ', className: 'text-right text-slate-500', title: 'Valeur globale estimée du portefeuille au moment de la cession (art. 150 VH bis)' },
+  { label: 'Actions', className: 'text-center text-slate-900' },
 ];
 
 export default function TransactionsPage() {
@@ -32,7 +36,7 @@ export default function TransactionsPage() {
       .then((res) => res.json())
       .then(async (data: Array<Omit<Transaction, 'date'> & { date: string }>) => {
         const transactions: Transaction[] = data.map((tx) => ({ ...tx, date: new Date(tx.date) }));
-        const cgApiKey = localStorage.getItem('crypto-tax-coingecko') ?? undefined;
+        const cgApiKey = getCoinGeckoKey();
         setCessions(await calculateCessions(transactions, setProgressMsg, cgApiKey));
       })
       .catch((err) => { if (err.name !== 'AbortError') setError('Impossible de charger les transactions.'); })
@@ -52,7 +56,7 @@ export default function TransactionsPage() {
       const res = await fetch(`/api/transactions?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Erreur API');
       fetchTransactions();
-    } catch (err) {
+    } catch {
       setError('Impossible de supprimer la transaction.');
       setLoading(false);
     }
@@ -78,6 +82,10 @@ export default function TransactionsPage() {
     .map(Number)
     .sort((a, b) => b - a); // Tri décroissant (ex: 2024, 2023...)
 
+  // Une valorisation incertaine fausse le coût imputé (calcul proportionnel) et
+  // donc le montant déclaré : l'information mérite mieux qu'un ⚠️ en fin de ligne.
+  const uncertainCount = filteredCessions.filter((c) => !c.portfolioValueCertain).length;
+
   const exportCsv = () => {
     const headers = ['Date', 'Plateforme', 'Actif', 'Quantité', 'Produit (EUR)', 'Coût imputé (EUR)', 'Gain/Perte (EUR)', 'Valeur Portefeuille (EUR)'];
     const rows = filteredCessions.map(c => [
@@ -102,7 +110,7 @@ export default function TransactionsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-10">
+    <main className="px-6 py-10">
       <div className="mx-auto max-w-7xl space-y-8">
         <section className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -168,102 +176,128 @@ export default function TransactionsPage() {
               Importer des transactions CSV →
             </Link>
           </section>
-        ) : filteredCessions.length === 0 ? (
-          <section className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200 text-slate-500">
-            <p>Aucune transaction ne correspond à vos filtres.</p>
-            <button onClick={() => { setFilterPlatform('all'); setFilterAsset('all'); }} className="mt-2 block text-sm text-teal-600 underline">
-              Réinitialiser les filtres
-            </button>
-          </section>
         ) : (
-          years.map((year) => {
-            const yearCessions = groupedCessions[year];
-            const yearGain = computeTotalGain(yearCessions);
-            const yearTaxable = computeTotalTaxable(yearCessions);
-
-            return (
-              <section key={year} className="overflow-hidden rounded-3xl bg-white shadow-lg ring-1 ring-slate-200">
-                <div className="border-b border-slate-200 bg-slate-50/50 p-8">
-                  <h2 className="mb-6 text-2xl font-bold text-slate-900">Année fiscale {year}</h2>
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                      <p className="text-sm text-slate-500">Plus-value nette</p>
-                      <p className={`mt-3 text-3xl font-semibold ${yearGain >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                        {yearGain.toFixed(2)} €
-                      </p>
-                    </div>
-                    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                      <p className="text-sm text-slate-500">Total cessions imposables</p>
-                      <p className="mt-3 text-3xl font-semibold text-slate-900">{yearTaxable.toFixed(2)} €</p>
-                    </div>
-                    <div className="rounded-3xl border border-amber-100 bg-amber-50 p-6 shadow-sm">
-                      <p className="text-sm text-amber-700">Reporter case 3AN / 3BN</p>
-                      <p className="mt-3 text-sm text-amber-800">
-                        {yearGain >= 0
-                          ? `3AN = ${yearGain.toFixed(2)} €`
-                          : `3BN = ${Math.abs(yearGain).toFixed(2)} € (non reportable)`}
-                      </p>
-                      <Link href="/cerfa" className="mt-2 block text-xs text-teal-600 underline">
-                        Générer le Cerfa →
-                      </Link>
-                    </div>
+          <>
+            {uncertainCount > 0 && (
+              <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
+                <div className="flex gap-4">
+                  <span aria-hidden="true" className="text-xl leading-none">⚠️</span>
+                  <div className="text-sm text-amber-900">
+                    <p className="font-semibold">
+                      {uncertainCount} cession{uncertainCount > 1 ? 's' : ''} repose
+                      {uncertainCount > 1 ? 'nt' : ''} sur une valeur de portefeuille estimée
+                    </p>
+                    <p className="mt-1.5 leading-relaxed text-amber-800">
+                      Au moins un actif détenu n&apos;a pas pu être valorisé au cours du marché
+                      (actif absent du référentiel CoinGecko, ou cours indisponible à cette date).
+                      Le prix de revient étant imputé proportionnellement à la valeur du portefeuille,
+                      <strong> les montants concernés peuvent être inexacts</strong>. Les lignes
+                      correspondantes sont marquées d&apos;un ⚠️ ci-dessous — recoupez-les avec vos
+                      relevés avant de déclarer.
+                    </p>
                   </div>
                 </div>
-
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        {TABLE_HEADERS.map((h, i) => (
-                          <th key={i} className={`px-4 py-4 font-semibold ${h.className} text-${h.align}`} title={h.title}>
-                            {h.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                      {yearCessions.map((cession) => (
-                        <tr key={cession.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
-                            {new Date(cession.date).toLocaleDateString('fr-FR')}
-                          </td>
-                          <td className="px-4 py-3 text-slate-700 capitalize">{cession.platform}</td>
-                          <td className="px-4 py-3 font-medium text-slate-900">{cession.asset}</td>
-                          <td className="px-4 py-3 text-slate-700 text-right">{cession.qty}</td>
-                          <td className="px-4 py-3 text-slate-700 text-right">{cession.grossProceeds.toFixed(2)} €</td>
-                          <td className="px-4 py-3 text-slate-700 text-right">{cession.acquisitionCost.toFixed(2)} €</td>
-                          <td className={`px-4 py-3 text-right font-semibold ${cession.gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {cession.gainLoss >= 0 ? '+' : ''}{cession.gainLoss.toFixed(2)} €
-                          </td>
-                          <td className="px-4 py-3 text-right text-xs">
-                            <span className={cession.portfolioValueCertain ? 'text-slate-400' : 'text-amber-600'}>
-                              {cession.portfolioValueAtSale.toFixed(0)} €
-                            </span>
-                            {!cession.portfolioValueCertain && (
-                              <span
-                                title="Valeur estimée : au moins un actif n'a pas pu être évalué via CoinGecko. La plus-value calculée peut être surévaluée."
-                                className="ml-1 cursor-help"
-                              >
-                                ⚠️
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={() => handleDelete(cession.id)}
-                              className="text-xs font-medium text-red-500 hover:text-red-700 hover:underline"
-                            >
-                              Supprimer
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               </section>
-            );
-          })
+            )}
+
+            {filteredCessions.length === 0 ? (
+              <section className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200 text-slate-500">
+                <p>Aucune transaction ne correspond à vos filtres.</p>
+                <button onClick={() => { setFilterPlatform('all'); setFilterAsset('all'); }} className="mt-2 block text-sm text-teal-600 underline">
+                  Réinitialiser les filtres
+                </button>
+              </section>
+            ) : (
+              years.map((year) => {
+                const yearCessions = groupedCessions[year];
+                const yearGain = computeTotalGain(yearCessions);
+                const yearTaxable = computeTotalTaxable(yearCessions);
+
+                return (
+                  <section key={year} className="overflow-hidden rounded-3xl bg-white shadow-lg ring-1 ring-slate-200">
+                    <div className="border-b border-slate-200 bg-slate-50/50 p-8">
+                      <h2 className="mb-6 text-2xl font-bold text-slate-900">Année fiscale {year}</h2>
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                          <p className="text-sm text-slate-500">Plus-value nette</p>
+                          <p className={`mt-3 text-3xl font-semibold ${yearGain >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                            {yearGain.toFixed(2)} €
+                          </p>
+                        </div>
+                        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                          <p className="text-sm text-slate-500">Total cessions imposables</p>
+                          <p className="mt-3 text-3xl font-semibold text-slate-900">{yearTaxable.toFixed(2)} €</p>
+                        </div>
+                        <div className="rounded-3xl border border-amber-100 bg-amber-50 p-6 shadow-sm">
+                          <p className="text-sm text-amber-700">Reporter case 3AN / 3BN</p>
+                          <p className="mt-3 text-sm text-amber-800">
+                            {yearGain >= 0
+                              ? `3AN = ${yearGain.toFixed(2)} €`
+                              : `3BN = ${Math.abs(yearGain).toFixed(2)} € (non reportable)`}
+                          </p>
+                          <Link href="/cerfa" className="mt-2 block text-xs text-teal-600 underline">
+                            Générer le Cerfa →
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            {TABLE_HEADERS.map((h) => (
+                              <th key={h.label} scope="col" className={`px-4 py-4 font-semibold ${h.className}`} title={h.title}>
+                                {h.label}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 bg-white">
+                          {yearCessions.map((cession) => (
+                            <tr key={cession.id} className="hover:bg-slate-50">
+                              <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                                {new Date(cession.date).toLocaleDateString('fr-FR')}
+                              </td>
+                              <td className="px-4 py-3 text-slate-700 capitalize">{cession.platform}</td>
+                              <td className="px-4 py-3 font-medium text-slate-900">{cession.asset}</td>
+                              <td className="px-4 py-3 text-slate-700 text-right">{cession.qty}</td>
+                              <td className="px-4 py-3 text-slate-700 text-right">{cession.grossProceeds.toFixed(2)} €</td>
+                              <td className="px-4 py-3 text-slate-700 text-right">{cession.acquisitionCost.toFixed(2)} €</td>
+                              <td className={`px-4 py-3 text-right font-semibold ${cession.gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {cession.gainLoss >= 0 ? '+' : ''}{cession.gainLoss.toFixed(2)} €
+                              </td>
+                              <td className="px-4 py-3 text-right text-xs">
+                                <span className={cession.portfolioValueCertain ? 'text-slate-400' : 'text-amber-600'}>
+                                  {cession.portfolioValueAtSale.toFixed(0)} €
+                                </span>
+                                {!cession.portfolioValueCertain && (
+                                  <span
+                                    title="Valeur estimée : au moins un actif n'a pas pu être évalué via CoinGecko. La plus-value calculée peut être surévaluée."
+                                    className="ml-1 cursor-help"
+                                  >
+                                    ⚠️
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <button
+                                  onClick={() => handleDelete(cession.id)}
+                                  className="text-xs font-medium text-red-500 hover:text-red-700 hover:underline"
+                                >
+                                  Supprimer
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                    );
+                  })
+            )}
+          </>
         )}
       </div>
     </main>

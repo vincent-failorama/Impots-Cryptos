@@ -2,6 +2,7 @@
 
 import React, { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { API_PLATFORMS, PLATFORMS } from '@/lib/platforms';
 
 type Step = { num: number; title: string; body: ReactNode };
 
@@ -19,71 +20,18 @@ function StepCard({ num, title, body }: Step) {
   );
 }
 
+// Guides d'export dérivés du registre des plateformes (`lib/platforms.ts`).
 type PlatformExport = {
   name: string;
-  steps: string[];
+  steps: readonly string[];
   note?: string;
 };
 
-const platformExports: PlatformExport[] = [
-  {
-    name: 'Binance',
-    steps: [
-      'Méthode recommandée : utilisez l\'onglet "Binance — API" dans la page Importer pour récupérer tout l\'historique en une seule opération (sans limite de 6 mois).',
-      'Méthode CSV (limitée à 6 mois) : Connectez-vous sur binance.com → Portefeuille → Historique des transactions → Exporter → Type "Transactions spot" → Générer.',
-      'Pour un historique complet via CSV : exportez période par période (6 mois à la fois) et importez chaque fichier séparément.',
-    ],
-    note: 'L\'export CSV Binance est limité à 6 mois par fichier. Préférez la connexion API (lecture seule) pour obtenir l\'historique complet en une fois.',
-  },
-  {
-    name: 'Bitget',
-    steps: [
-      'Connectez-vous sur bitget.com',
-      'Actifs → Historique des ordres → Spot',
-      'Filtrez par date → Exporter',
-      'Téléchargez le fichier CSV reçu par e-mail ou disponible directement',
-    ],
-  },
-  {
-    name: 'Kraken',
-    steps: [
-      'Connectez-vous sur kraken.com',
-      'Historique → Exporter',
-      'Type d\'export : "Trades"',
-      'Sélectionnez la période → Soumettre → Télécharger',
-    ],
-    note: 'Choisissez "Trades" et non "Ledgers" pour avoir les données correctes.',
-  },
-  {
-    name: 'Gate.io',
-    steps: [
-      'Connectez-vous sur gate.io',
-      'Ordres → Historique des ordres au comptant',
-      'Cliquez sur "Exporter" en haut à droite',
-      'Choisissez la plage de dates → Télécharger CSV',
-    ],
-  },
-  {
-    name: 'KuCoin',
-    steps: [
-      'Connectez-vous sur kucoin.com',
-      'Actifs → Historique des ordres → Ordres réalisés',
-      'Cliquez sur "Exporter les données"',
-      'Sélectionnez "Spot" et la plage de dates → Exporter',
-      'Téléchargez le CSV (envoyé par e-mail ou disponible dans les exports)',
-    ],
-  },
-  {
-    name: 'Coinbase',
-    steps: [
-      'Connectez-vous sur coinbase.com',
-      'Profil → Relevés (Statements)',
-      'Onglet "Transactions" → Générer un relevé personnalisé',
-      'Sélectionnez toutes les devises, la plage de dates → Télécharger CSV',
-    ],
-    note: 'Pour Coinbase Advanced Trade : Portefeuille → Historique → Exporter.',
-  },
-];
+const platformExports: PlatformExport[] = PLATFORMS.map((p) => ({
+  name: p.label,
+  steps: p.csvExportSteps,
+  note: p.csvNote,
+}));
 
 const quickLinks = [
   { href: '#workflow', label: 'Fonctionnement général' },
@@ -128,18 +76,21 @@ export default function AidePage() {
     { title: "Générez les formulaires Cerfa", body: <>La page <Link href="/cerfa" className="text-teal-600 underline">Cerfa</Link> vous permet de télécharger en PDF votre déclaration 2086 (plus-values) et 3916-bis (comptes à l&apos;étranger).</> },
   ];
 
-  const apiPlatforms = [
-    { name: 'Binance', desc: <>Profil → Gestion des clés API → Créer une clé API (Système généré). Activez <strong className="text-teal-700">uniquement &quot;Enable Reading&quot;</strong>.</> },
-    { name: 'Kraken', desc: <>Sécurité → API → Créer une clé API. Cochez <strong className="text-teal-700">uniquement &quot;Query Funds&quot; et &quot;Query Closed Orders &amp; Trades&quot;</strong>.</> },
-    { name: 'Coinbase', desc: <>Paramètres → API → Nouvelle clé API (Legacy). Activez <strong className="text-teal-700">uniquement la permission &quot;brokerage:orders:read&quot;</strong> (ou &quot;wallet:trades:read&quot;).</> },
-    { name: 'Gate.io', desc: <>Gestion des API → Créer une clé APIv4. Activez <strong className="text-teal-700">uniquement &quot;Spot Trade&quot; en &quot;Read Only&quot;</strong>.</> },
-    { name: 'KuCoin', desc: <>Gestion des API → Créer une API (Type : API Trading). Activez <strong className="text-teal-700">uniquement &quot;General&quot;</strong>. Vous devrez également renseigner la phrase secrète (Passphrase).</> },
-  ];
+  const apiKeyGuides = API_PLATFORMS.map((p) => ({
+    name: p.label,
+    desc: (
+      <>
+        {p.api.keyCreationPath}. Activez{' '}
+        <strong className="text-teal-700">{p.api.requiredPermission}</strong>.
+        {p.api.requiresPassphrase && ' Vous devrez également renseigner la phrase secrète (Passphrase).'}
+      </>
+    ),
+  }));
 
   const apiSteps: Omit<Step, 'num'>[] = [
-    { title: "Créer une clé API en lecture seule", body: <div className="space-y-4 mt-2">{apiPlatforms.map(p => <div key={p.name}><strong className="text-slate-900">{p.name} :</strong> {p.desc}</div>)}</div> },
+    { title: "Créer une clé API en lecture seule", body: <div className="space-y-4 mt-2">{apiKeyGuides.map(p => <div key={p.name}><strong className="text-slate-900">{p.name} :</strong> {p.desc}</div>)}</div> },
     { title: "Importer dans l'application", body: <>Allez sur la page <Link href="/import" className="text-teal-600 underline">Importer</Link>, onglet <strong>Via API</strong>. Sélectionnez votre plateforme, collez votre clé et votre secret, puis cliquez sur le bouton de récupération. L&apos;opération peut prendre quelques instants selon le volume de votre historique.</> },
-    { title: "Ce qui est récupéré", body: "Tous vos trades spot sur le compte de la plateforme. Les trades sur paires crypto/crypto sont également inclus et traités comme des événements imposables selon la règle du 150 VH bis." },
+    { title: "Ce qui est récupéré", body: "Tous vos trades spot sur le compte de la plateforme. Les échanges crypto/crypto sont également récupérés : ils ne sont pas imposables (sursis d'imposition, art. 150 VH bis II-A) mais restent nécessaires au suivi de votre portefeuille." },
   ];
 
   const importSteps: Omit<Step, 'num'>[] = [
@@ -199,7 +150,7 @@ export default function AidePage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-10">
+    <main className="px-6 py-10">
       <div className="mx-auto max-w-3xl space-y-10">
 
         {/* En-tête */}
@@ -258,7 +209,7 @@ export default function AidePage() {
 
         {/* Import via API */}
         <section id="api" className="rounded-3xl bg-white p-8 shadow-lg ring-1 ring-slate-200">
-          <h2 className="text-xl font-semibold text-slate-900 mb-4">Connexion via API (Binance, Kraken, Coinbase, Gate.io, KuCoin)</h2>
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Connexion via API ({API_PLATFORMS.map(p => p.label).join(', ')})</h2>
           <p className="text-sm text-slate-600 mb-6">
             L&apos;import via API permet de récupérer l&apos;intégralité de votre historique en une seule opération, contournant les limitations des exports CSV (comme la limite de 6 mois sur Binance).
           </p>
@@ -355,7 +306,7 @@ export default function AidePage() {
             </p>
 
             <div className="rounded-2xl bg-slate-900 text-slate-100 px-6 py-5 font-mono text-xs leading-relaxed">
-              <p className="text-slate-400 mb-2">// Formule article 150 VH bis</p>
+              <p className="text-slate-400 mb-2">{'// Formule article 150 VH bis'}</p>
               <p>Plus-value =</p>
               <p className="pl-4">Prix de cession</p>
               <p className="pl-4">− (Prix de revient global × Prix de cession / Valeur globale du portefeuille)</p>

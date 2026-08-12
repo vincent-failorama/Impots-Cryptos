@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
-import { Transaction } from "@/lib/types";
+import { Transaction, isTransactionType } from "@/lib/types";
+import { isPlatformId } from "@/lib/platforms";
 
 // En mode Electron, DATA_DIR pointe vers userData (writable).
 // En mode Next.js classique, fallback sur data/ à la racine du projet.
@@ -18,9 +19,6 @@ function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
   return result;
 }
 
-const VALID_PLATFORMS = new Set(["binance", "bitget", "kraken", "gate", "kucoin", "coinbase"]);
-const VALID_TYPES = new Set(["buy", "sell", "trade", "staking", "mining", "airdrop", "other"]);
-
 function isValidTransaction(tx: unknown): tx is Transaction {
   if (!tx || typeof tx !== "object") return false;
   const t = tx as Record<string, unknown>;
@@ -28,13 +26,13 @@ function isValidTransaction(tx: unknown): tx is Transaction {
     typeof t.id === "string" &&
     t.id.length > 0 &&
     (typeof t.date === "string" || t.date instanceof Date) &&
-    VALID_PLATFORMS.has(t.platform as string) &&
+    isPlatformId(t.platform) &&
     typeof t.asset === "string" &&
     typeof t.qty === "number" &&
     Number.isFinite(t.qty) &&
     typeof t.priceEur === "number" &&
     typeof t.fiatAmount === "number" &&
-    VALID_TYPES.has(t.type as string) &&
+    isTransactionType(t.type) &&
     typeof t.isTaxable === "boolean"
   );
 }

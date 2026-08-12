@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { Transaction } from "@/lib/types";
+import { API_QUOTE_ASSETS } from "@/lib/quote-currencies";
+import { BROKER_PAUSE_MS, sleep } from "@/lib/rate-limits";
 
 const BASE = "https://api.binance.com";
 
-// Actifs cotés à interroger (paires majeures)
-const QUOTE_ASSETS = new Set(["EUR", "USDT", "USDC", "BTC", "ETH", "BNB"]);
+const QUOTE_ASSETS = new Set<string>(API_QUOTE_ASSETS);
 
 function sign(queryString: string, secret: string): string {
   return crypto.createHmac("sha256", secret).update(queryString).digest("hex");
@@ -84,7 +85,9 @@ function buildTransaction(trade: BinanceTrade, symbolInfo: BinanceSymbolInfo): T
       priceEur: 0,
       fiatAmount: 0,
       type: "trade",
-      isTaxable: true,
+      // Sursis d'imposition : l'échange crypto→crypto n'est pas une cession
+      // imposable (art. 150 VH bis, II-A CGI). Les holdings suivent quand même.
+      isTaxable: false,
       receivedAsset: baseAsset,
       receivedQty: qty,
     };
@@ -99,7 +102,8 @@ function buildTransaction(trade: BinanceTrade, symbolInfo: BinanceSymbolInfo): T
       priceEur: 0,
       fiatAmount: 0,
       type: "trade",
-      isTaxable: true,
+      // Sursis d'imposition (art. 150 VH bis, II-A CGI) — cf. branche ci-dessus.
+      isTaxable: false,
       receivedAsset: quoteAsset,
       receivedQty: quoteQty,
     };
@@ -145,8 +149,7 @@ export async function POST(request: Request) {
           transactions.push(buildTransaction(trade, symbolInfo));
         }
 
-        // Respecter le rate limit Binance (1200 req/min sur l'IP, 10 points/s sur l'API key)
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await sleep(BROKER_PAUSE_MS.binance);
       } catch {
         // Symbole non tradé sur ce compte — on ignore silencieusement
         symbolsQueried++;
@@ -155,9 +158,9 @@ export async function POST(request: Request) {
 
     transactions.sort((a, b) => a.date.getTime() - b.date.getTime());
     return NextResponse.json({ transactions, count: transactions.length, symbolsQueried, errors });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err.message || "Erreur lors de la récupération depuis Binance" },
+      { error: err instanceof Error ? err.message : "Erreur lors de la récupération depuis Binance" },
       { status: 502 }
     );
   }

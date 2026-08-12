@@ -120,9 +120,9 @@ export async function POST(request: Request) {
 
     transactions.sort((a, b) => a.date.getTime() - b.date.getTime());
     return NextResponse.json({ transactions, count: transactions.length });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err.message || "Erreur lors de la récupération depuis Coinbase" },
+      { error: err instanceof Error ? err.message : "Erreur lors de la récupération depuis Coinbase" },
       { status: 502 }
     );
   }
