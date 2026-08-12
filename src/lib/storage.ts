@@ -19,6 +19,8 @@ export const STORAGE_KEYS = {
   priceCache: "crypto-tax-price-cache",
   /** Correspondance symbole → identifiant CoinGecko. */
   assetRegistry: "crypto-tax-asset-registry",
+  /** Frais déductibles saisis par année fiscale. */
+  deductibleFees: "crypto-tax-deductible-fees",
 } as const;
 
 /** Clé de stockage des identifiants API, par plateforme. */

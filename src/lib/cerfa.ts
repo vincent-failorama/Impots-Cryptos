@@ -129,6 +129,11 @@ export type CerfaYearSummary = {
   /** Case 3VH — total des prix de cession */
   case3VH: number;
   cessionCount: number;
+  /** true si le total cédé reste sous le seuil d'exonération de 305 €. */
+  isExempt: boolean;
+  incomeTax: number;
+  socialCharges: number;
+  totalTax: number;
 };
 
 export type CerfaBncSummary = {
@@ -185,11 +190,27 @@ export async function generateCerfaPdf(payload: CerfaPayload): Promise<Uint8Arra
       L.row("  Case 3AN — Plus-value imposable", eur(y.case3AN));
       L.row("  Case 3BN — Moins-value", eur(y.case3BN));
       L.row("  Case 3VH — Total des prix de cession", eur(y.case3VH));
+
+      if (y.isExempt) {
+        L.row("  Imposition", "exonéré (cessions < 305 EUR)", { muted: true });
+      } else if (y.totalTax > 0) {
+        L.row("  Impôt sur le revenu (12,8 %)", eur(y.incomeTax), { muted: true });
+        L.row("  Prélèvements sociaux (17,2 %)", eur(y.socialCharges), { muted: true });
+        L.row("  Impôt total estimé", eur(y.totalTax), { strong: true });
+      } else {
+        L.row("  Imposition", "aucune (moins-value)", { muted: true });
+      }
     }
     L.gap(4);
     L.paragraph(
       "Calcul selon la méthode proportionnelle de l'article 150 VH bis du CGI. " +
-      "Les échanges crypto-crypto bénéficient du sursis d'imposition et ne sont pas comptabilisés comme cessions."
+      "Les échanges crypto-crypto bénéficient du sursis d'imposition et ne sont pas comptabilisés comme cessions. " +
+      "Les plus-values sont exonérées lorsque le total des prix de cession de l'année n'excède pas 305 EUR."
+    );
+    L.paragraph(
+      "L'impôt indiqué correspond au prélèvement forfaitaire unique de 30 % (12,8 % d'impôt sur le " +
+      "revenu et 17,2 % de prélèvements sociaux). L'option pour le barème progressif, qui dépend de " +
+      "votre tranche marginale, n'est pas prise en compte ici."
     );
   }
 

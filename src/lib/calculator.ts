@@ -280,6 +280,93 @@ export async function calculateCessions(
   return cessions;
 }
 
+/**
+ * Barème d'imposition des plus-values sur actifs numériques.
+ *
+ * Prélèvement forfaitaire unique (art. 200 C du CGI) : 12,8 % d'impôt sur le
+ * revenu + 17,2 % de prélèvements sociaux. Le contribuable peut opter pour le
+ * barème progressif ; les prélèvements sociaux restent alors dus au même taux,
+ * seule la part IR change — cette option dépend du taux marginal du foyer et
+ * n'est donc pas calculable ici.
+ */
+export const PFU = {
+  incomeTaxRate: 0.128,
+  socialChargesRate: 0.172,
+} as const;
+
+/**
+ * Seuil d'exonération de l'article 150 VH bis : les plus-values sont exonérées
+ * lorsque la somme des prix de cession de l'année n'excède pas ce montant.
+ * Le seuil porte sur le total cédé, pas sur le gain.
+ */
+export const EXEMPTION_THRESHOLD_EUR = 305;
+
+export type YearSummary = {
+  year: number;
+  cessionCount: number;
+  /** Somme des prix de cession — case 3VH, et base du seuil des 305 €. */
+  totalProceeds: number;
+  /** Résultat net de l'année (peut être négatif). */
+  netGain: number;
+  /** Frais déductibles saisis par l'utilisateur. */
+  deductibleFees: number;
+  /** Résultat après déduction des frais. */
+  adjustedGain: number;
+  /** Case 3AN — plus-value imposable. */
+  case3AN: number;
+  /** Case 3BN — moins-value de l'année. */
+  case3BN: number;
+  /** true si le total des cessions reste sous le seuil des 305 €. */
+  isExempt: boolean;
+  /** Assiette réellement imposée, après seuil et frais. */
+  taxableBase: number;
+  incomeTax: number;
+  socialCharges: number;
+  totalTax: number;
+  /** true si au moins une cession repose sur une valorisation estimée. */
+  hasUncertainValuation: boolean;
+};
+
+/**
+ * Synthèse fiscale d'une année : assiette, seuil d'exonération et impôt estimé.
+ *
+ * Une moins-value ne se reporte pas sur les années suivantes en matière
+ * d'actifs numériques : elle s'impute uniquement sur les plus-values de la
+ * même année, ce que produit naturellement la somme des résultats.
+ */
+export function computeYearSummary(
+  year: number,
+  cessions: CessionResult[],
+  deductibleFees = 0
+): YearSummary {
+  const totalProceeds = cessions.reduce((sum, c) => sum + c.grossProceeds, 0);
+  const netGain = computeTotalGain(cessions);
+  const adjustedGain = netGain - deductibleFees;
+
+  const isExempt = totalProceeds <= EXEMPTION_THRESHOLD_EUR;
+  const taxableBase = isExempt || adjustedGain <= 0 ? 0 : adjustedGain;
+
+  const incomeTax = taxableBase * PFU.incomeTaxRate;
+  const socialCharges = taxableBase * PFU.socialChargesRate;
+
+  return {
+    year,
+    cessionCount: cessions.length,
+    totalProceeds,
+    netGain,
+    deductibleFees,
+    adjustedGain,
+    case3AN: adjustedGain > 0 ? adjustedGain : 0,
+    case3BN: adjustedGain < 0 ? Math.abs(adjustedGain) : 0,
+    isExempt,
+    taxableBase,
+    incomeTax,
+    socialCharges,
+    totalTax: incomeTax + socialCharges,
+    hasUncertainValuation: cessions.some((c) => !c.portfolioValueCertain),
+  };
+}
+
 export function computeTotalGain(results: CessionResult[]) {
   return results.reduce((sum, row) => sum + row.gainLoss, 0);
 }

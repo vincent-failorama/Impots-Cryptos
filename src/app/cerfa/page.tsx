@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { CessionResult, BNCResult, calculateCessions, computeBNCIncome, computeTotalGain } from '@/lib/calculator';
+import {
+  CessionResult, BNCResult, calculateCessions, computeBNCIncome, computeYearSummary,
+  EXEMPTION_THRESHOLD_EUR, PFU,
+} from '@/lib/calculator';
 import { Transaction } from '@/lib/types';
 import { STORAGE_KEYS, getCoinGeckoKey, readJson, writeJson } from '@/lib/storage';
 
@@ -55,6 +58,8 @@ export default function CerfaPage() {
 
     // Comptes 3916-bis : conservés uniquement dans le navigateur (vie privée)
     setAccounts(readJson<ForeignAccount[]>(STORAGE_KEYS.foreignAccounts, []));
+    // Les frais déductibles alimentent le PDF : ils doivent survivre au rechargement
+    setYearlyFees(readJson<Record<number, string>>(STORAGE_KEYS.deductibleFees, {}));
 
     return () => controller.abort();
   }, []);
@@ -99,8 +104,17 @@ export default function CerfaPage() {
   const years = Object.keys(groupedCessions).map(Number).sort((a, b) => b - a); // Tri décroissant
 
   const handleFeeChange = (year: number, value: string) => {
-    setYearlyFees(prev => ({ ...prev, [year]: value }));
+    setYearlyFees(prev => {
+      const next = { ...prev, [year]: value };
+      writeJson(STORAGE_KEYS.deductibleFees, next);
+      return next;
+    });
   };
+
+  /** Synthèse fiscale par année : assiette, seuil des 305 € et impôt estimé. */
+  const yearSummaries = years.map((year) =>
+    computeYearSummary(year, groupedCessions[year], parseFloat(yearlyFees[year]) || 0)
+  );
 
   const bncByYear = bncResults.reduce((acc, r) => {
     const y = r.date.getFullYear();
@@ -120,17 +134,17 @@ export default function CerfaPage() {
 
       const bytes = await generateCerfaPdf({
         generatedAt: new Date(),
-        years: years.map((year) => {
-          const yearCessions = groupedCessions[year];
-          const gain = computeTotalGain(yearCessions) - (parseFloat(yearlyFees[year]) || 0);
-          return {
-            year,
-            case3AN: gain > 0 ? gain : 0,
-            case3BN: gain < 0 ? Math.abs(gain) : 0,
-            case3VH: yearCessions.reduce((sum, c) => sum + c.grossProceeds, 0),
-            cessionCount: yearCessions.length,
-          };
-        }),
+        years: yearSummaries.map((y) => ({
+          year: y.year,
+          case3AN: y.case3AN,
+          case3BN: y.case3BN,
+          case3VH: y.totalProceeds,
+          cessionCount: y.cessionCount,
+          isExempt: y.isExempt,
+          incomeTax: y.incomeTax,
+          socialCharges: y.socialCharges,
+          totalTax: y.totalTax,
+        })),
         bnc: Object.keys(bncByYear).map(Number).sort((a, b) => b - a).map((year) => ({
           year, ...bncByYear[year],
         })),
@@ -215,15 +229,8 @@ export default function CerfaPage() {
             <p className="text-slate-500 text-sm">Aucune cession imposable trouvée pour générer la déclaration.</p>
           ) : (
             <div className="space-y-10 print:space-y-8">
-              {years.map((year) => {
-                const yearCessions = groupedCessions[year];
-                const yearGain = computeTotalGain(yearCessions);
-                const yearProceeds = yearCessions.reduce((sum, c) => sum + c.grossProceeds, 0);
-
-                const fee = parseFloat(yearlyFees[year]) || 0;
-                const adjustedGain = yearGain - fee;
-                // 3VH = total brut des cessions (les frais réduisent la plus-value, pas le total des cessions)
-                const adjustedProceeds = yearProceeds;
+              {yearSummaries.map((summary) => {
+                const year = summary.year;
 
                 return (
                   <div key={year} className="space-y-4 break-inside-avoid">
@@ -245,17 +252,68 @@ export default function CerfaPage() {
                     <div className="grid gap-6 sm:grid-cols-3">
                       <div className="rounded-2xl bg-slate-50 p-5 border border-slate-200">
                         <p className="text-sm text-slate-500 font-medium mb-1">Case 3AN (Plus-value)</p>
-                        <p className="text-2xl font-bold text-slate-900">{adjustedGain > 0 ? adjustedGain.toFixed(0) : 0} €</p>
+                        <p className="text-2xl font-bold text-slate-900">{summary.case3AN.toFixed(0)} €</p>
                       </div>
                       <div className="rounded-2xl bg-slate-50 p-5 border border-slate-200">
                         <p className="text-sm text-slate-500 font-medium mb-1">Case 3BN (Moins-value)</p>
-                        <p className="text-2xl font-bold text-slate-900">{adjustedGain < 0 ? Math.abs(adjustedGain).toFixed(0) : 0} €</p>
+                        <p className="text-2xl font-bold text-slate-900">{summary.case3BN.toFixed(0)} €</p>
                       </div>
                       <div className="rounded-2xl bg-slate-50 p-5 border border-slate-200">
                         <p className="text-sm text-slate-500 font-medium mb-1">Case 3VH (Total cessions)</p>
-                        <p className="text-2xl font-bold text-slate-900">{adjustedProceeds.toFixed(0)} €</p>
+                        <p className="text-2xl font-bold text-slate-900">{summary.totalProceeds.toFixed(0)} €</p>
                       </div>
                     </div>
+
+                    {/* Estimation de l'impôt dû */}
+                    {summary.isExempt ? (
+                      <div className="rounded-2xl border border-teal-200 bg-teal-50 p-5">
+                        <p className="text-sm font-semibold text-teal-900">
+                          Exonéré — total des cessions inférieur à {EXEMPTION_THRESHOLD_EUR} €
+                        </p>
+                        <p className="mt-1.5 text-sm leading-relaxed text-teal-800">
+                          L&apos;article 150 VH bis exonère les plus-values lorsque la somme des prix
+                          de cession de l&apos;année n&apos;excède pas {EXEMPTION_THRESHOLD_EUR} €.
+                          Les cessions restent à déclarer, mais aucun impôt n&apos;est dû.
+                        </p>
+                      </div>
+                    ) : summary.taxableBase > 0 ? (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900">Impôt estimé</p>
+                          <p className="text-2xl font-bold text-slate-900">
+                            {summary.totalTax.toFixed(0)} €
+                          </p>
+                        </div>
+                        <dl className="mt-4 space-y-1.5 text-sm text-slate-600">
+                          <div className="flex justify-between gap-4">
+                            <dt>Impôt sur le revenu ({(PFU.incomeTaxRate * 100).toFixed(1)} %)</dt>
+                            <dd className="tabular-nums">{summary.incomeTax.toFixed(0)} €</dd>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <dt>Prélèvements sociaux ({(PFU.socialChargesRate * 100).toFixed(1)} %)</dt>
+                            <dd className="tabular-nums">{summary.socialCharges.toFixed(0)} €</dd>
+                          </div>
+                          <div className="flex justify-between gap-4 border-t border-slate-100 pt-1.5 font-medium text-slate-900">
+                            <dt>Assiette imposable</dt>
+                            <dd className="tabular-nums">{summary.taxableBase.toFixed(0)} €</dd>
+                          </div>
+                        </dl>
+                        <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                          Prélèvement forfaitaire unique de 30 %. Vous pouvez opter pour le barème
+                          progressif de l&apos;impôt sur le revenu : les prélèvements sociaux restent
+                          dus au même taux, seule la part d&apos;impôt varie selon votre tranche.
+                          {summary.hasUncertainValuation && ' Certaines cessions reposent sur une valeur de portefeuille estimée : ce montant peut être inexact.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <p className="text-sm text-slate-600">
+                          Aucun impôt dû : l&apos;année se solde par une moins-value.
+                          Elle s&apos;impute sur les plus-values de la même année et n&apos;est pas
+                          reportable sur les années suivantes.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
