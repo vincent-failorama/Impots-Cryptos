@@ -25,7 +25,7 @@ Plus-value = Prix de cession − (Prix de revient global × Prix de cession / Va
 |--------------|:----------:|:----------:|:------------------:|
 | Binance      | ✓          | ✓          | ✓                  |
 | Kraken       | ✓          | ✓          | ✓                  |
-| Coinbase     | ✓          | ✓          | ✓                  |
+| Coinbase     | ✓          | ✓ ¹        | ✓                  |
 | KuCoin       | ✓          | ✓          | ✓                  |
 | Gate.io      | ✓          | ✓          | ✓                  |
 | Bitget       | ✓          |            | ✓                  |
@@ -39,12 +39,23 @@ Plus-value = Prix de cession − (Prix de revient global × Prix de cession / Va
 > **Colonne « Format CSV vérifié »** : les libellés de colonnes attendus proviennent
 > de la documentation publique de chaque plateforme, mais n'ont pas tous été
 > confrontés à un export réel. Si un import ne remonte aucune transaction,
-> l'application affiche les colonnes trouvées dans votre fichier — il suffit
-> alors d'ajouter l'alias manquant dans `csvColumns` (`src/lib/platforms.ts`).
+> l'application affiche les colonnes trouvées dans votre fichier et vous propose
+> de désigner vous-même à quoi chacune correspond. La correspondance est
+> mémorisée : les imports suivants fonctionnent sans rien redéfinir.
+>
+> Ce mécanisme rend l'import possible **pour n'importe quel export CSV**, y
+> compris d'une plateforme absente de la liste — choisissez alors celle dont le
+> format se rapproche le plus et définissez la correspondance.
 
 > **Ledger Live** exporte des mouvements de portefeuille, pas des ordres : ces
 > lignes sont importées comme non imposables. Complétez-les avec l'export de la
 > plateforme sur laquelle l'achat a réellement eu lieu.
+>
+> ¹ **Coinbase** : les clés API « legacy » ont expiré le 5 février 2025. L'import
+> API utilise l'authentification JWT de Coinbase Developer Platform — créez une
+> clé sur [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) et
+> renseignez son nom complet (`organizations/…/apiKeys/…`) ainsi que son secret.
+> Les signatures Ed25519 et ECDSA sont gérées.
 
 ---
 

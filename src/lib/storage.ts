@@ -28,6 +28,14 @@ export function brokerKeysStorageKey(platform: string): string {
   return `crypto-tax-api-${platform}`;
 }
 
+/**
+ * Clé de stockage du mappage de colonnes défini manuellement, par plateforme.
+ * Permet de réimporter ensuite sans refaire la correspondance.
+ */
+export function columnMapStorageKey(platform: string): string {
+  return `crypto-tax-columns-${platform}`;
+}
+
 function storage(): Storage | null {
   if (typeof window === "undefined") return null;
   try {

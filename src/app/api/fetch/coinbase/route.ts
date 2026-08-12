@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 import { Transaction } from "@/lib/types";
+import { buildCoinbaseJwt } from "@/lib/coinbase-jwt";
 
-const BASE_URL = "https://api.coinbase.com";
-
-function getCoinbaseSignature(requestPath: string, method: string, secret: string, timestamp: string, body: string = "") {
-  const message = timestamp + method + requestPath + body;
-  return crypto.createHmac("sha256", secret).update(message).digest("hex");
-}
+const HOST = "api.coinbase.com";
+const BASE_URL = `https://${HOST}`;
 
 async function coinbaseFetch<T>(
   method: string,
@@ -16,24 +12,30 @@ async function coinbaseFetch<T>(
   apiSecret: string,
   queryParams?: Record<string, string>
 ): Promise<T | null> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
   const queryString = queryParams ? "?" + new URLSearchParams(queryParams).toString() : "";
   const fullPath = path + queryString;
 
-  const signature = getCoinbaseSignature(fullPath, method, apiSecret, timestamp);
+  // Le JWT porte le chemin sans la chaîne de requête et n'est valable que 120 s :
+  // il est donc régénéré à chaque appel, y compris entre deux pages de résultats.
+  const jwt = buildCoinbaseJwt(apiKey, apiSecret, method, HOST, path);
 
   const res = await fetch(`${BASE_URL}${fullPath}`, {
     method,
     headers: {
-      "CB-ACCESS-KEY": apiKey,
-      "CB-ACCESS-SIGN": signature,
-      "CB-ACCESS-TIMESTAMP": timestamp,
+      Authorization: `Bearer ${jwt}`,
       "Content-Type": "application/json",
     },
   });
 
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 401) {
+      throw new Error(
+        "Authentification Coinbase refusée (401). Les clés API « legacy » ont expiré le " +
+        "5 février 2025 : créez une clé sur Coinbase Developer Platform et utilisez le nom " +
+        "complet de la clé (organizations/…/apiKeys/…) ainsi que son secret."
+      );
+    }
     throw new Error(`Erreur API Coinbase (${res.status}) : ${text}`);
   }
 
@@ -91,6 +93,17 @@ export async function POST(request: Request) {
   const { apiKey, apiSecret } = body as Record<string, string>;
   if (!apiKey || !apiSecret) {
     return NextResponse.json({ error: "apiKey et apiSecret sont requis" }, { status: 400 });
+  }
+
+  // Échec immédiat et explicite si le secret n'est pas exploitable, plutôt
+  // qu'un 401 opaque renvoyé par Coinbase après un aller-retour réseau.
+  try {
+    buildCoinbaseJwt(apiKey, apiSecret, "GET", HOST, "/api/v3/brokerage/accounts");
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Clé secrète Coinbase invalide." },
+      { status: 400 }
+    );
   }
 
   try {

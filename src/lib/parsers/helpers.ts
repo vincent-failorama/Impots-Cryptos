@@ -118,14 +118,65 @@ export function pickNumber(row: Record<string, string>, ...aliases: string[]): n
  * on la normalise en ISO 8601 UTC explicite ("YYYY-MM-DDTHH:mm:ssZ").
  * Les formats qui incluent déjà un timezone (ex: Coinbase avec "Z") ne sont pas affectés.
  */
+/**
+ * Plage d'années plausibles pour une transaction sur actifs numériques.
+ * Le bloc de genèse de Bitcoin date de 2009 : toute date antérieure trahit une
+ * mauvaise lecture, jamais une opération réelle.
+ */
+const EARLIEST_PLAUSIBLE_YEAR = 2009;
+
 export function parseDate(raw: string): Date | null {
   if (!raw) return null;
+  const trimmed = raw.trim();
+
+  // Garde-fou : `new Date()` accepte des chaînes qui ne sont pas des dates.
+  // « ref-1 » est ainsi interprété comme l'année 2001 par le parseur permissif
+  // de V8. Sans ce filtre, une colonne mal désignée produisait des transactions
+  // datées de 2001, rattachées à une année fiscale inexistante.
+  if (!/\d{4}/.test(trimmed) && !/\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/.test(trimmed)) {
+    return null;
+  }
+
+  // ── Format jour/mois/année ────────────────────────────────────────────────
+  // JavaScript interprète "15/06/2023" comme mois 15 et renvoie une date
+  // invalide : les exports européens seraient donc intégralement rejetés.
+  // En cas d'ambiguïté (« 06/07/2023 »), la convention française jour-mois est
+  // retenue — c'est le format des plateformes visées par cet outil.
+  const dmy = trimmed.match(
+    /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?/
+  );
+  if (dmy) {
+    const [, day, month, year, hh = "0", mm = "0", ss = "0"] = dmy;
+    const d = new Date(Date.UTC(
+      Number(year), Number(month) - 1, Number(day),
+      Number(hh), Number(mm), Number(ss)
+    ));
+    // Contrôle de cohérence : le 31/02 serait sinon reporté au 3 mars
+    if (
+      isNaN(d.getTime()) ||
+      d.getUTCDate() !== Number(day) ||
+      d.getUTCMonth() !== Number(month) - 1
+    ) {
+      return null;
+    }
+    return isPlausibleYear(d) ? d : null;
+  }
+
   // Normalise "YYYY-MM-DD HH:mm:ss" (avec ou sans millisecondes) en UTC explicite
-  const normalized = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(raw.trim())
-    ? raw.trim().replace(' ', 'T') + 'Z'
-    : raw.trim();
+  const normalized = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(trimmed)
+    ? trimmed.replace(' ', 'T') + 'Z'
+    : trimmed;
+
   const d = new Date(normalized);
-  return isNaN(d.getTime()) ? null : d;
+  if (isNaN(d.getTime())) return null;
+
+  // Une date hors plage plausible signale une lecture erronée, pas une opération
+  return isPlausibleYear(d) ? d : null;
+}
+
+function isPlausibleYear(d: Date): boolean {
+  const year = d.getUTCFullYear();
+  return year >= EARLIEST_PLAUSIBLE_YEAR && year <= new Date().getUTCFullYear() + 1;
 }
 
 /**

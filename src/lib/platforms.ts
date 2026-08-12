@@ -159,9 +159,9 @@ const PLATFORMS_RAW = [
       "L'export Coinbase inclut les revenus de staking et les récompenses : ils sont détectés automatiquement et déclarés en BNC.",
     api: {
       securityNote:
-        'Créez une clé API (Legacy API Key) avec la permission « brokerage:orders:read » ou « wallet:trades:read » uniquement.',
-      keyCreationPath: "Paramètres → API → Nouvelle clé API (Legacy)",
-      requiredPermission: 'uniquement la permission « brokerage:orders:read » (ou « wallet:trades:read »)',
+        'Créez une clé sur Coinbase Developer Platform (portal.cdp.coinbase.com) avec la permission « View » uniquement. Renseignez le nom complet de la clé (organizations/…/apiKeys/…) et son secret. Les anciennes clés API ont expiré le 5 février 2025 et ne fonctionnent plus.',
+      keyCreationPath: "portal.cdp.coinbase.com → API Keys → Create API key",
+      requiredPermission: 'uniquement la permission « View » (lecture seule)',
     },
   },
   {

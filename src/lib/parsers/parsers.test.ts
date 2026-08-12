@@ -88,6 +88,55 @@ test("parseDate — traite les dates sans fuseau comme UTC", () => {
   assert.equal(parseDate("pas une date"), null);
 });
 
+test("parseDate — rejette les chaînes que V8 interprète abusivement", () => {
+  // Régression : `new Date("ref-1")` renvoie l'année 2001 au lieu d'échouer.
+  // Une colonne mal désignée produisait donc des transactions datées de 2001.
+  for (const bogus of ["ref-1", "ligne-3", "abc", "-", "N/A", "12"]) {
+    assert.equal(parseDate(bogus), null, `« ${bogus} » ne doit pas produire de date`);
+  }
+});
+
+test("parseDate — rejette les dates antérieures à l'existence des cryptos", () => {
+  assert.equal(parseDate("1999-05-01 10:00:00"), null);
+  assert.equal(parseDate("2001-01-01"), null);
+  // 2009 (bloc de genèse Bitcoin) reste accepté
+  assert.ok(parseDate("2009-01-03 18:15:05") instanceof Date);
+});
+
+test("parseDate — rejette les dates trop lointaines dans le futur", () => {
+  const farFuture = `${new Date().getUTCFullYear() + 5}-01-01 10:00:00`;
+  assert.equal(parseDate(farFuture), null);
+});
+
+test("parseDate — accepte les formats usuels des exports", () => {
+  for (const valid of [
+    "2023-06-15 10:00:00",
+    "2023-06-15T10:00:00Z",
+    "2023-06-15",
+    "15/06/2023",
+    "15/06/2023 10:00:00",
+    "15-06-2023",
+    "15.06.2023",
+  ]) {
+    assert.ok(parseDate(valid) instanceof Date, `« ${valid} » doit être accepté`);
+  }
+});
+
+test("parseDate — lit les dates européennes en jour/mois/année", () => {
+  // « 15/06/2023 » est une date invalide pour JavaScript, qui attend mois/jour :
+  // sans traitement explicite, tous les exports européens étaient rejetés.
+  assert.equal(parseDate("15/06/2023")?.toISOString(), "2023-06-15T00:00:00.000Z");
+  assert.equal(parseDate("15/06/2023 14:30:00")?.toISOString(), "2023-06-15T14:30:00.000Z");
+  // Cas ambigu : la convention française jour-mois est retenue
+  assert.equal(parseDate("06/07/2023")?.toISOString(), "2023-07-06T00:00:00.000Z");
+});
+
+test("parseDate — rejette les dates calendairement impossibles", () => {
+  // Sans contrôle, le 31/02 serait silencieusement reporté au 3 mars
+  assert.equal(parseDate("31/02/2023"), null);
+  assert.equal(parseDate("32/01/2023"), null);
+});
+
 // ── Parsers par plateforme ──────────────────────────────────────────────────
 
 test("Binance — actif, sens et imposabilité", () => {

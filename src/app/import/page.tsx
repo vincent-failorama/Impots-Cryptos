@@ -3,13 +3,16 @@
 import React, { useState, ChangeEvent } from 'react';
 import Link from 'next/link';
 import type { Transaction } from '@/lib/types';
-import { parseCsv } from '@/lib/parsers';
+import {
+  parseCsv, parseCsvWithColumns, buildColumnMap, COLUMN_FIELDS,
+} from '@/lib/parsers';
 import { readCsvHeaders } from '@/lib/parsers/helpers';
 import { API_PLATFORMS, PLATFORMS, getPlatform, type PlatformId } from '@/lib/platforms';
 import { API_QUOTE_ASSETS } from '@/lib/quote-currencies';
 import { clearPriceCache, getKnownAssetCount, getPriceCacheSize } from '@/lib/pricer';
 import {
-  STORAGE_KEYS, brokerKeysStorageKey, readJson, readString, remove, writeJson, writeString,
+  STORAGE_KEYS, brokerKeysStorageKey, columnMapStorageKey,
+  readJson, readString, remove, writeJson, writeString,
 } from '@/lib/storage';
 
 async function saveTransactions(transactions: Transaction[]): Promise<{ saved: number; duplicates: number }> {
@@ -29,6 +32,8 @@ function CsvImport() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [detectedColumns, setDetectedColumns] = useState<string[]>([]);
+  const [pendingCsv, setPendingCsv] = useState<{ text: string; name: string } | null>(null);
+  const [mapping, setMapping] = useState<Partial<Record<string, string>>>({});
 
   const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -38,18 +43,30 @@ function CsvImport() {
     setDetectedColumns([]);
     try {
       const text = await file.text();
-      const transactions = parseCsv(platform, text);
+
+      // Un mappage défini manuellement pour cette plateforme prime sur les
+      // libellés par défaut : l'utilisateur a constaté que ceux-ci échouaient.
+      const savedMap = readJson<Partial<Record<string, string>> | null>(
+        columnMapStorageKey(platform), null
+      );
+      const transactions = savedMap
+        ? parseCsvWithColumns(platform, text, buildColumnMap(savedMap))
+        : parseCsv(platform, text);
+
       if (transactions.length === 0) {
         // Diagnostic : la cause la plus fréquente est un libellé de colonne que
         // nos alias ne connaissent pas. On montre ce que contient le fichier
         // plutôt que de laisser l'utilisateur deviner.
         setDetectedColumns(readCsvHeaders(text));
+        setPendingCsv({ text, name: file.name });
+        setMapping(savedMap ?? {});
         setMessage(
-          `Aucune transaction trouvée dans ${file.name}. Vérifiez que la plateforme sélectionnée correspond bien au fichier.`
+          `Aucune transaction trouvée dans ${file.name}. Vérifiez que la plateforme sélectionnée correspond bien au fichier, ou indiquez ci-dessous à quoi correspondent vos colonnes.`
         );
         return;
       }
       setDetectedColumns([]);
+      setPendingCsv(null);
       const { saved, duplicates } = await saveTransactions(transactions);
       const dupNote = duplicates > 0 ? ` (${duplicates} doublon(s) ignoré(s))` : '';
       setMessage(`✓ ${saved} transaction(s) importée(s)${dupNote} depuis ${file.name}.`);
@@ -58,6 +75,32 @@ function CsvImport() {
     } finally {
       setLoading(false);
       event.target.value = '';
+    }
+  };
+
+  const requiredMapped = COLUMN_FIELDS.filter((f) => f.required).every((f) => mapping[f.key]);
+
+  const handleApplyMapping = async () => {
+    if (!pendingCsv || !requiredMapped) return;
+    setLoading(true);
+    try {
+      const transactions = parseCsvWithColumns(platform, pendingCsv.text, buildColumnMap(mapping));
+      if (transactions.length === 0) {
+        setMessage('Toujours aucune transaction. Vérifiez que les colonnes choisies contiennent bien des dates et des montants.');
+        return;
+      }
+      // Le mappage a fonctionné : on le conserve pour les imports suivants
+      writeJson(columnMapStorageKey(platform), mapping);
+
+      const { saved, duplicates } = await saveTransactions(transactions);
+      const dupNote = duplicates > 0 ? ` (${duplicates} doublon(s) ignoré(s))` : '';
+      setMessage(`✓ ${saved} transaction(s) importée(s)${dupNote} depuis ${pendingCsv.name}. Correspondance mémorisée pour ${getPlatform(platform).label}.`);
+      setDetectedColumns([]);
+      setPendingCsv(null);
+    } catch (err) {
+      setMessage(`Erreur : ${err instanceof Error ? err.message : 'Inconnue'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -112,10 +155,49 @@ function CsvImport() {
             ))}
           </ul>
           <p className="mt-3 leading-relaxed text-amber-800">
-            Si ces colonnes correspondent bien à des ordres d&apos;achat et de vente, le format
-            de {getPlatform(platform).label} a probablement changé. Communiquez cette liste
-            pour que les libellés attendus soient mis à jour.
+            Indiquez à quoi correspond chaque colonne : l&apos;import fonctionnera sans
+            attendre une mise à jour, et la correspondance sera mémorisée pour vos
+            prochains fichiers {getPlatform(platform).label}.
           </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {COLUMN_FIELDS.map((field) => (
+              <label key={field.key} className="block">
+                <span className="text-xs font-medium text-amber-900">
+                  {field.label}
+                  {field.required
+                    ? <span className="text-red-600"> *</span>
+                    : <span className="font-normal text-amber-600"> (optionnel)</span>}
+                </span>
+                <select
+                  value={mapping[field.key] ?? ''}
+                  onChange={(e) => setMapping((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                >
+                  <option value="">— aucune —</option>
+                  {detectedColumns.map((col) => (
+                    <option key={col} value={col}>{col}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleApplyMapping}
+              disabled={!requiredMapped || loading}
+              className="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Réessayer avec ces colonnes
+            </button>
+            {!requiredMapped && (
+              <span className="text-xs text-amber-700">
+                Renseignez au minimum les champs marqués d&apos;une étoile.
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
