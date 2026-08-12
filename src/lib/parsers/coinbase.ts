@@ -1,5 +1,5 @@
 import { Transaction } from "../types";
-import { splitCsvLine, normalizeHeaders, buildRow, parseDate } from "./helpers";
+import { splitCsvLine, normalizeHeaders, buildRow, parseDate, pick, pickNumber } from "./helpers";
 
 /**
  * Parser Coinbase — Account Statement CSV (Advanced Trade & Classic).
@@ -31,28 +31,22 @@ export function parseCoinbaseCsv(csv: string): Transaction[] {
 
     // ── Date ──────────────────────────────────────────────────────────────
     const date = parseDate(
-      row["timestamp"] ||
-      row["created at"] ||
-      row["date"] ||
-      row["time"] ||
-      ""
+      pick(row, "timestamp", "created at", "date", "time")
     );
     if (!date) return [];
 
     // ── Actif ─────────────────────────────────────────────────────────────
     // Classic : colonne "asset" directe
     // Advanced Trade : "product" de la forme "BTC-EUR" ou "ETH-USD"
-    let asset = (row["asset"] || "").toUpperCase();
+    let asset = pick(row, "asset", "currency", "base asset").toUpperCase();
     if (!asset) {
-      const product = (row["product"] || row["symbol"] || "").toUpperCase();
+      const product = pick(row, "product", "symbol", "pair").toUpperCase();
       [asset] = product.split("-");
     }
     if (!asset) return [];
 
     // ── Type de transaction ───────────────────────────────────────────────
-    const rawType = (
-      row["transaction type"] || row["type"] || row["side"] || ""
-    ).toLowerCase();
+    const rawType = pick(row, "transaction type", "type", "side").toLowerCase();
 
     // Coinbase Classic types : "Buy", "Sell", "Convert", "Rewards Income", "Learning Reward"…
     let txType: Transaction["type"] = "other";
@@ -77,31 +71,21 @@ export function parseCoinbaseCsv(csv: string): Transaction[] {
     // "receive", "send", etc. → "other", non taxable
 
     // ── Quantité ──────────────────────────────────────────────────────────
-    const qty =
-      Math.abs(Number(row["quantity transacted"] || row["size"] || row["amount"] || "0")) || 0;
+    const qty = Math.abs(pickNumber(row, "quantity transacted", "size", "amount", "quantity"));
 
     // ── Montant fiat ──────────────────────────────────────────────────────
     // Classic : "subtotal" (hors frais) ou "total (inclusive of fees and/or spread)"
     // Advanced Trade : "total" (signé, négatif pour achat)
-    const fiatAmount =
-      Math.abs(
-        Number(
-          row["subtotal"] ||
-          row["total (inclusive of fees and/or spread)"] ||
-          row["total"] ||
-          "0"
-        )
-      ) || 0;
+    const fiatAmount = Math.abs(
+      pickNumber(row, "subtotal", "total (inclusive of fees and/or spread)", "total")
+    );
 
     // ── Prix unitaire ─────────────────────────────────────────────────────
     const price =
-      Number(row["spot price at transaction"] || row["price"] || "0") ||
-      (qty ? fiatAmount / qty : 0);
+      pickNumber(row, "spot price at transaction", "price") || (qty ? fiatAmount / qty : 0);
 
     const id =
-      row["trade id"] ||
-      row["order id"] ||
-      row["notes"] ||           // Classic utilise parfois les notes comme ref
+      pick(row, "trade id", "order id", "id", "notes") ||
       `coinbase-${index}-${date.valueOf()}`;
 
     const tx: Transaction = {

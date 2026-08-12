@@ -1,6 +1,23 @@
-export type TransactionPlatform = "binance" | "bitget" | "kraken" | "gate" | "kucoin" | "coinbase";
+import type { PlatformId } from "./platforms";
 
-export type TransactionType = "buy" | "sell" | "trade" | "staking" | "mining" | "airdrop" | "other";
+/** Dérivé du registre des plateformes — voir `platforms.ts`. */
+export type TransactionPlatform = PlatformId;
+
+export const TRANSACTION_TYPES = [
+  "buy",
+  "sell",
+  "trade",
+  "staking",
+  "mining",
+  "airdrop",
+  "other",
+] as const;
+
+export type TransactionType = (typeof TRANSACTION_TYPES)[number];
+
+export function isTransactionType(value: unknown): value is TransactionType {
+  return typeof value === "string" && (TRANSACTION_TYPES as readonly string[]).includes(value);
+}
 
 export type Transaction = {
   id: string;

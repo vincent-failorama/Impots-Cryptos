@@ -1,5 +1,6 @@
 import { Transaction } from "./types";
-import { CG_ASSET_MAP, fetchHistoricalPriceEur } from "./pricer";
+import { fetchHistoricalPriceEur, isAssetPriceable, warmAssetRegistry } from "./pricer";
+import { coinGeckoThrottleMs } from "./rate-limits";
 
 export type BNCResult = {
   id: string;
@@ -90,7 +91,7 @@ function collectNeededPrices(sorted: Transaction[]): Array<{ asset: string; date
     if (tx.isTaxable && (tx.type === "sell" || tx.type === "trade")) {
       const dateStr = toDateStr(tx.date);
       for (const [asset, qty] of holdings) {
-        if (qty > 0 && CG_ASSET_MAP[asset.toUpperCase()]) {
+        if (qty > 0 && isAssetPriceable(asset)) {
           needed.add(`${asset}|${dateStr}`);
         }
       }
@@ -99,6 +100,11 @@ function collectNeededPrices(sorted: Transaction[]): Array<{ asset: string; date
       if (tx.type === "trade" && tx.receivedAsset && tx.receivedQty) {
         holdings.set(tx.receivedAsset, (holdings.get(tx.receivedAsset) ?? 0) + tx.receivedQty);
       }
+    } else if (!tx.isTaxable && tx.type === "trade" && tx.receivedAsset && tx.receivedQty) {
+      // Échange crypto→crypto en sursis d'imposition : pas de cession, mais les
+      // holdings changent — ils doivent suivre pour valoriser les cessions futures.
+      holdings.set(tx.asset, Math.max(0, (holdings.get(tx.asset) ?? 0) - tx.qty));
+      holdings.set(tx.receivedAsset, (holdings.get(tx.receivedAsset) ?? 0) + tx.receivedQty);
     }
   }
 
@@ -118,7 +124,7 @@ async function prefetchPrices(
   onProgress: (msg: string) => void
 ): Promise<Map<string, number>> {
   const cache = new Map<string, number>();
-  const delay = cgApiKey ? 500 : 1500;
+  const delay = coinGeckoThrottleMs(cgApiKey);
 
   for (let i = 0; i < pairs.length; i++) {
     const { asset, dateStr } = pairs[i];
@@ -148,6 +154,11 @@ export async function calculateCessions(
   cgApiKey?: string
 ): Promise<CessionResult[]> {
   const sorted = [...transactions].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // ── Phase 0 : registre des actifs ────────────────────────────────────────
+  // Doit précéder collectNeededPrices, qui filtre sur les actifs valorisables.
+  onProgress?.("Chargement du référentiel des actifs…");
+  await warmAssetRegistry(cgApiKey);
 
   // ── Phase 1 + 2 : pré-chargement des prix ────────────────────────────────
   const neededPairs = collectNeededPrices(sorted);
@@ -192,8 +203,14 @@ export async function calculateCessions(
       for (const [heldAsset, heldQty] of holdings) {
         if (heldQty <= 0) continue;
         const cgPrice = priceMap.get(`${heldAsset}|${dateStr}`);
-        if (cgPrice === undefined && CG_ASSET_MAP[heldAsset.toUpperCase()]) {
-          // Actif connu de CoinGecko mais prix non obtenu → valeur incertaine
+        // La valeur du portefeuille n'est fiable que si CHAQUE actif détenu a
+        // été valorisé au cours du marché. Deux cas la rendent incertaine :
+        //   - l'actif est inconnu de CoinGecko (aucun cours disponible) ;
+        //   - il est connu mais le cours n'a pas pu être récupéré.
+        // Sans ce contrôle, un actif hors référentiel était valorisé à son prix
+        // d'achat, sous-évaluant le portefeuille et faussant la plus-value
+        // (le coût imputé étant proportionnel) — sans aucun signal.
+        if (cgPrice === undefined) {
           portfolioValueCertain = false;
         }
         const price = cgPrice ?? lastKnownPrice.get(heldAsset) ?? 0;
@@ -244,6 +261,25 @@ export async function calculateCessions(
         globalCostBasisBefore,
         portfolioValueCertain,
       });
+    }
+
+    // ── Échange crypto→crypto en sursis d'imposition ────────────────────────
+    // Art. 150 VH bis, II-A : l'échange d'actifs numériques entre eux ne
+    // constitue pas une cession imposable. Le prix de revient global est donc
+    // inchangé — l'imposition est reportée à la sortie vers une monnaie fiat.
+    // Seuls les holdings évoluent, afin que les cessions ultérieures soient
+    // valorisées sur le bon portefeuille.
+    if (!tx.isTaxable && isTrade && tx.receivedAsset && tx.receivedQty) {
+      const held = holdings.get(tx.asset) ?? 0;
+      const newQty = Math.max(0, held - tx.qty);
+      if (newQty === 0) holdings.delete(tx.asset);
+      else holdings.set(tx.asset, newQty);
+
+      holdings.set(tx.receivedAsset, (holdings.get(tx.receivedAsset) ?? 0) + tx.receivedQty);
+
+      if (tx.receivedValueEur && tx.receivedQty > 0) {
+        lastKnownPrice.set(tx.receivedAsset, tx.receivedValueEur / tx.receivedQty);
+      }
     }
   }
 

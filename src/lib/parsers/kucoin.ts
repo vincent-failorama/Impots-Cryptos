@@ -1,5 +1,5 @@
 import { Transaction } from "../types";
-import { splitCsvLine, normalizeHeaders, buildRow, parseDate } from "./helpers";
+import { splitCsvLine, normalizeHeaders, buildRow, parseDate, extractBaseAsset, pick, pickNumber } from "./helpers";
 
 /**
  * Parser KuCoin — Spot Trade History CSV.
@@ -29,38 +29,25 @@ export function parseKucoinCsv(csv: string): Transaction[] {
 
     // Date : plusieurs noms de colonnes possibles
     const date = parseDate(
-      row["tradecreatedat"] ||
-      row["order created time"] ||
-      row["time"] ||
-      row["date"] ||
-      ""
+      pick(row, "tradecreatedat", "order created time", "filled time", "time", "date")
     );
     if (!date) return [];
 
     // Symbole : "BTC-USDT" → base = "BTC"
-    const symbol = (row["symbol"] || row["pair"] || "").toUpperCase();
-    const [base] = symbol.split("-");
+    const base = extractBaseAsset(pick(row, "symbol", "pair", "trading pair"));
     if (!base) return [];
 
-    const side = (row["side"] || row["type"] || "").toLowerCase();
+    const side = pick(row, "side", "type", "direction").toLowerCase();
 
     // Quantité (actif cédé/acheté)
-    const qty =
-      Number(row["amount"] || row["size"] || row["vol"] || "0") || 0;
+    const qty = pickNumber(row, "amount", "size", "filled amount", "quantity", "vol");
 
     // Montant fiat (contrepartie en devise de cotation)
-    const fiatAmount =
-      Number(row["volume"] || row["funds"] || row["total"] || row["cost"] || "0") || 0;
+    const fiatAmount = pickNumber(row, "volume", "funds", "filled volume", "total", "cost");
 
-    const price =
-      Number(row["price"] || "0") || (qty ? fiatAmount / qty : 0);
+    const price = pickNumber(row, "price", "avg price", "filled price") || (qty ? fiatAmount / qty : 0);
 
-    const id =
-      row["orderid"] ||
-      row["order id"] ||
-      row["uid"] ||
-      row["tradeid"] ||
-      `kucoin-${index}-${date.valueOf()}`;
+    const id = pick(row, "orderid", "order id", "uid", "tradeid") || `kucoin-${index}-${date.valueOf()}`;
 
     const tx: Transaction = {
       id,
@@ -71,7 +58,8 @@ export function parseKucoinCsv(csv: string): Transaction[] {
       priceEur: price,
       fiatAmount,
       type: side === "buy" ? "buy" : side === "sell" ? "sell" : "trade",
-      isTaxable: side === "sell" || side === "trade",
+      // Sursis d'imposition sur les échanges crypto→crypto (art. 150 VH bis CGI).
+      isTaxable: side === "sell",
     };
     return [tx];
   });
